@@ -78,7 +78,7 @@ DESPLIEGUE.md         Deployment guide (Spanish)
 
 ## Testing
 
-`test/oauth1.test.mts` checks RFC 3986 percent-encoding and the OAuth1 HMAC-SHA1 signature against the canonical OAuth 1.0a test vector, Twitter's documented example. It builds the signature base string the same way `exchange()` does. Run it with `node test/oauth1.test.mts`.
+`test/oauth1.test.mts` checks RFC 3986 percent-encoding and the OAuth1 HMAC-SHA1 signature against the canonical OAuth 1.0a test vector, Twitter's documented example. It builds the signature base string the same way `exchange()` does. Run it with `node test/oauth1.test.mts`. `npm run typecheck` runs `tsc --noEmit` over `src/` against `@cloudflare/workers-types`.
 
 ## Adding a tool
 
