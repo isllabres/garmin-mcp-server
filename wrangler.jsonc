@@ -1,0 +1,13 @@
+{
+  "name": "garmin-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+
+  // Sin contenedor, sin Durable Objects, sin binding de pago.
+  // Free tier: 100.000 peticiones al dia.
+  "workers_dev": false,
+  "routes": [
+    { "pattern": "garmin-mcp.TUDOMINIO.com", "custom_domain": true }
+  ],
+  "observability": { "enabled": true }
+}
