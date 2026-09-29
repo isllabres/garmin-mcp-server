@@ -111,7 +111,7 @@ async function exchange(oauth1: OAuth1Token): Promise<OAuth2Token> {
       "User-Agent": UA_OAUTH,
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: Object.entries(form).map(([k, v]) => `${k}=${v}`).join("&"),
+    body: Object.entries(form).map(([k, v]) => `${pct(k)}=${pct(v)}`).join("&"),
   });
   if (!res.ok) {
     throw new Error(

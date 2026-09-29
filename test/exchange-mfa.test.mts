@@ -97,5 +97,15 @@ for (const [label, oauth1] of [
   check(`sin mfa (${label}): firma valida`, await verifyOAuth1(req, "test-cs", "sec-456"), true);
 }
 
+// --- 4. un mfa_token con caracteres reservados se codifica y sigue firmando bien ---
+{
+  const raw = "a+b/c=d&e f";
+  const [req] = await captureExchange({ oauth_token: "tok-123", oauth_token_secret: "sec-456", mfa_token: raw });
+  const form = new URLSearchParams(req.body);
+  check("mfa reservados: valor intacto al decodificar", form.get("mfa_token"), raw);
+  check("mfa reservados: un solo campo en el formulario", [...form].length, 1);
+  check("mfa reservados: firma valida", await verifyOAuth1(req, "test-cs", "sec-456"), true);
+}
+
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
 process.exit(fail ? 1 : 0);
