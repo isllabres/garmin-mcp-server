@@ -3,6 +3,7 @@
 // fetch esta sustituido por un stub que graba cada llamada: nunca sale a la red.
 import { TOOL_MAP } from "../src/tools.ts";
 import { presetConsumer } from "../src/garmin.ts";
+import worker from "../src/index.ts";
 
 let fail = 0;
 const check = (name: string, got: unknown, want: unknown) => {
@@ -125,6 +126,31 @@ for (const [tool, args, argName] of [
     check(`get_body_battery acepta ${start} a ${end}`, got,
       `GET ${A}/wellness-service/wellness/bodyBattery/reports/daily?startDate=${start}&endDate=${end}`);
   }
+}
+
+// --- 12. tools/call devuelve el fallo de validacion como isError, no como error JSON-RPC, sin fetch ---
+{
+  calls.length = 0;
+  const env = {
+    GARMIN_OAUTH1: JSON.stringify({ oauth_token: "tok", oauth_token_secret: "sec" }),
+    UPSTREAM_TOKEN: "up", GARMIN_CONSUMER_KEY: "ck", GARMIN_CONSUMER_SECRET: "cs",
+  };
+  const res = await worker.fetch(new Request("https://worker.test/", {
+    method: "POST",
+    headers: { Authorization: "Bearer up" },
+    body: JSON.stringify({
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "delete_workout", arguments: { workout_id: "../../userprofile-service/socialProfile" } },
+    }),
+  }), env);
+  const body = await res.json() as { result?: { isError?: boolean; content?: { text: string }[] }; error?: unknown };
+  const text = body.result?.content?.[0]?.text ?? "";
+  check("tools/call con workout_id invalido: HTTP 200", res.status, 200);
+  check("tools/call con workout_id invalido: result.isError", body.result?.isError, true);
+  check("tools/call con workout_id invalido: texto 'Error: ' que nombra workout_id",
+    text.startsWith("Error: ") && text.includes("workout_id"), true);
+  check("tools/call con workout_id invalido: sin error JSON-RPC", "error" in body, false);
+  check("tools/call con workout_id invalido: 0 llamadas a fetch", calls.length, 0);
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
