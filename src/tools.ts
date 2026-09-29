@@ -1,5 +1,5 @@
 import { connectapi, displayName, type OAuth1Token } from "./garmin.ts";
-import { idArg, dateArg, intArg } from "./validate.ts";
+import { idArg, dateArg, intArg, invalid } from "./validate.ts";
 
 // unknown impide operar con un argumento crudo (a.month - 1 no compila), pero una
 // plantilla `${a.x}` acepta unknown: todo argumento que vaya a una URL debe pasar
@@ -62,6 +62,8 @@ export const TOOLS: Tool[] = [
     handler: async (t, a) => {
       const start = dateArg(a.start_date, "start_date");
       const end = dateArg(a.end_date, "end_date");
+      // Con fechas YYYY-MM-DD ya validadas, la comparacion de cadenas sigue el orden cronologico.
+      if (start > end) throw invalid("start_date", "no puede ser posterior a end_date");
       return connectapi(t,
         `/wellness-service/wellness/bodyBattery/reports/daily` +
         `?startDate=${start}&endDate=${end}`);

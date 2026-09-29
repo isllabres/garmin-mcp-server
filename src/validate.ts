@@ -2,7 +2,7 @@
 // Garmin. Sin imports relativos: los tests de Node lo importan directamente.
 
 // Error comun: "<argumento> invalido: <regla>", en ASCII.
-const invalid = (name: string, rule: string) => new Error(`${name} invalido: ${rule}`);
+export const invalid = (name: string, rule: string) => new Error(`${name} invalido: ${rule}`);
 
 /** Entero positivo, como cadena de digitos o como numero. Devuelve la cadena a interpolar. */
 export function idArg(value: unknown, name: string): string {
