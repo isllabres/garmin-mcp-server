@@ -13,6 +13,6 @@ export function idArg(value: unknown, name: string): string {
 
 /** Fecha real en formato YYYY-MM-DD. La devuelve sin cambios. */
 export function dateArg(value: unknown, name: string): string {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return value as string;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   throw invalid(name, "debe ser una fecha real YYYY-MM-DD");
 }

@@ -58,5 +58,14 @@ for (const input of ["2026-03-01", "2026-01-01", "2026-12-31", "2024-02-29", "20
   check(`dateArg acepta ${input}`, got, input);
 }
 
+// --- 5. dateArg rechaza lo que no sea una cadena YYYY-MM-DD estricta ---
+for (const input of [
+  "2026-01-02&foo=bar", "../../userprofile-service/userprofile/user-settings", "2026-01-05/../x",
+  "2026-1-5", "26-01-05", "20260105", "2026/01/05", "2026-01-05T00:00:00Z", " 2026-01-05",
+  "2026-01-05\n", "", 20260105, ["2026-01-05"], null, undefined,
+] as unknown[]) {
+  check(`dateArg rechaza ${show(input)}`, rejects(() => dateArg(input, "end_date"), "end_date"), "ok");
+}
+
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
 process.exit(fail ? 1 : 0);
