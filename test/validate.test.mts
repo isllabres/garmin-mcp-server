@@ -89,5 +89,17 @@ for (const [label, call, want] of [
   check(`${label} devuelve ${want}`, got, want);
 }
 
+// --- 8. intArg rechaza no enteros, valores fuera de rango y lo que no sea numero ---
+for (const [name, min, max, inputs] of [
+  ["month", 1, 12, [0, 13, 2.5, "3", "abc", [3], NaN, null, true]],
+  ["year", 1000, 9999, [999, 10000, 2026.5, "2026"]],
+  ["start", 0, undefined, [-1, 1.5]],
+  ["limit", 1, undefined, [0, -5, Infinity, "10"]],
+] as [string, number, number | undefined, unknown[]][]) {
+  for (const input of inputs) {
+    check(`intArg rechaza ${name}=${show(input)}`, rejects(() => intArg(input, name, min, max), name), "ok");
+  }
+}
+
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
 process.exit(fail ? 1 : 0);

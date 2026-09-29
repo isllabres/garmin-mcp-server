@@ -25,5 +25,8 @@ export function dateArg(value: unknown, name: string): string {
 
 /** Entero dentro de [min, max], ambos inclusive (sin maximo si se omite). Lo devuelve como numero. */
 export function intArg(value: unknown, name: string, min: number, max?: number): number {
-  return value as number;
+  if (typeof value === "number" && Number.isInteger(value) && value >= min && (max === undefined || value <= max)) {
+    return value;
+  }
+  throw invalid(name, max === undefined ? `debe ser un entero >= ${min}` : `debe ser un entero entre ${min} y ${max}`);
 }
