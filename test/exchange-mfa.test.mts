@@ -84,5 +84,18 @@ const MFA = { oauth_token: "tok-123", oauth_token_secret: "sec-456", mfa_token: 
   check("mfa: firma valida incluyendo mfa_token", await verifyOAuth1(req, "test-cs", "sec-456"), true);
 }
 
+// --- 3. sin mfa_token (ausente, null o vacio) la peticion no cambia ---
+for (const [label, oauth1] of [
+  ["ausente", { oauth_token: "tok-123", oauth_token_secret: "sec-456" }],
+  ["null", { oauth_token: "tok-123", oauth_token_secret: "sec-456", mfa_token: null }],
+  ["vacio", { oauth_token: "tok-123", oauth_token_secret: "sec-456", mfa_token: "" }],
+] as [string, OAuth1Token][]) {
+  const [req] = await captureExchange(oauth1);
+  check(`sin mfa (${label}): body vacio`, req.body, "");
+  check(`sin mfa (${label}): content-type de formulario`, req.contentType, "application/x-www-form-urlencoded");
+  check(`sin mfa (${label}): cabecera solo con parametros oauth_*`, headerKeys(req), JSON.stringify(OAUTH_KEYS));
+  check(`sin mfa (${label}): firma valida`, await verifyOAuth1(req, "test-cs", "sec-456"), true);
+}
+
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
 process.exit(fail ? 1 : 0);
