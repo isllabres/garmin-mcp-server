@@ -19,6 +19,8 @@ const CONSUMER_URL = "https://thegarth.s3.amazonaws.com/oauth_consumer.json";
 export interface OAuth1Token {
   oauth_token: string;
   oauth_token_secret: string;
+  // Cuentas con MFA: el intercambio lo envia en el formulario y lo firma, como
+  // garth sso.exchange. garth escribe null cuando la cuenta no tiene MFA.
   mfa_token?: string | null;
   domain?: string;
 }
