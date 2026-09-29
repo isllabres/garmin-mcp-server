@@ -67,18 +67,24 @@ Garmin indexes sleep data by the user's `displayName`, not by date alone. The Wo
 ## Project layout
 
 ```
-src/index.ts          Worker entry point: Bearer check, JSON-RPC/MCP dispatch
-src/garmin.ts         Garmin client: OAuth1 signing, OAuth2 exchange, caching, connectapi()
-src/tools.ts          Tool definitions: name, description, JSON Schema, handler
-test/oauth1.test.mts  OAuth1 signature test against the canonical vector
-wrangler.jsonc        Worker config: name, route, observability
-docs/ARCHITECTURE.md  This document
-DESPLIEGUE.md         Deployment guide (Spanish)
+src/index.ts                Worker entry point: Bearer check, JSON-RPC/MCP dispatch
+src/garmin.ts               Garmin client: OAuth1 signing, OAuth2 exchange, caching, connectapi()
+src/tools.ts                Tool definitions: name, description, JSON Schema, handler
+test/oauth1.test.mts        OAuth1 signature test against the canonical vector
+test/exchange-mfa.test.mts  Token exchange test: mfa_token in the form body and the signature
+wrangler.jsonc              Worker config: name, route, observability
+docs/ARCHITECTURE.md        This document
+DESPLIEGUE.md               Deployment guide (Spanish)
 ```
 
 ## Testing
 
-`test/oauth1.test.mts` checks RFC 3986 percent-encoding and the OAuth1 HMAC-SHA1 signature against the canonical OAuth 1.0a test vector, Twitter's documented example. It builds the signature base string the same way `exchange()` does. Run it with `node test/oauth1.test.mts`. `npm run typecheck` runs `tsc --noEmit` over `src/` against `@cloudflare/workers-types`.
+Tests are standalone Node scripts in `test/`, and none of them touches the network. Run each one on its own with `node <file>`: Node treats any extra files as arguments to the first.
+
+- `test/oauth1.test.mts` checks RFC 3986 percent-encoding and the OAuth1 HMAC-SHA1 signature against the canonical OAuth 1.0a test vector, Twitter's documented example. It builds the signature base string the same way `exchange()` does.
+- `test/exchange-mfa.test.mts` runs `connectapi()` against a stubbed `fetch` and checks the token exchange request it captures. When `mfa_token` is set, it must be in the form body and in the signature, but not in the `Authorization` header. Accounts without MFA must send an unchanged request. The test verifies each signature the way Garmin's server would (RFC 5849).
+
+`npm run typecheck` runs `tsc --noEmit` over `src/` against `@cloudflare/workers-types`.
 
 ## Adding a tool
 
