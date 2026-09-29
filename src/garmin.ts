@@ -19,6 +19,7 @@ const CONSUMER_URL = "https://thegarth.s3.amazonaws.com/oauth_consumer.json";
 export interface OAuth1Token {
   oauth_token: string;
   oauth_token_secret: string;
+  mfa_token?: string | null;
   domain?: string;
 }
 
@@ -105,7 +106,7 @@ async function exchange(oauth1: OAuth1Token): Promise<OAuth2Token> {
       "User-Agent": UA_OAUTH,
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: "",
+    body: oauth1.mfa_token ? `mfa_token=${oauth1.mfa_token}` : "",
   });
   if (!res.ok) {
     throw new Error(
