@@ -64,14 +64,27 @@ Tool descriptions are written in Spanish because the model reads them. Each tool
 
 Garmin indexes sleep data by the user's `displayName`, not by date alone. The Worker reads the name once from `/userprofile-service/socialProfile` and caches it.
 
+Before any request, each handler validates every argument that goes into the URL with `idArg`, `dateArg` or `intArg` from `src/validate.ts`. The rules are:
+
+- dates are real `YYYY-MM-DD` dates;
+- ids are positive integers, given as a digit-only string or a number;
+- `year`, `month`, `start` and `limit` are integer JSON numbers, so `"3"` and `2.5` are rejected;
+- `month` is 1–12, `year` is 1000–9999, `start` is at least 0 (default 0), and `limit` is at least 1 (default 20, no upper cap);
+- `get_body_battery` also rejects a `start_date` later than its `end_date`.
+
+Invalid input becomes an `isError` result with a message such as `month invalido: debe ser un entero entre 1 y 12`, and Garmin is never called. This stops a crafted argument such as `../../userprofile-service/socialProfile` from reaching a different endpoint.
+
 ## Project layout
 
 ```
 src/index.ts                Worker entry point: Bearer check, JSON-RPC/MCP dispatch
 src/garmin.ts               Garmin client: OAuth1 signing, OAuth2 exchange, caching, connectapi()
 src/tools.ts                Tool definitions: name, description, JSON Schema, handler
+src/validate.ts             Argument validation: idArg, dateArg, intArg
 test/oauth1.test.mts        OAuth1 signature test against the canonical vector
 test/exchange-mfa.test.mts  Token exchange test: mfa_token in the form body and the signature
+test/validate.test.mts      Validation rules: format, calendar, sign, range and type
+test/tools.test.mts         Tool requests: invalid arguments never reach fetch; valid ones build today's URLs
 wrangler.jsonc              Worker config: name, route, observability
 docs/ARCHITECTURE.md        This document
 DESPLIEGUE.md               Deployment guide (Spanish)
@@ -79,10 +92,12 @@ DESPLIEGUE.md               Deployment guide (Spanish)
 
 ## Testing
 
-Tests are standalone Node scripts in `test/`, and none of them touches the network. Run each one on its own with `node <file>`: Node treats any extra files as arguments to the first.
+Tests are standalone Node scripts in `test/`, and none of them touches the network. Run each one on its own with `node <file>`: Node treats any extra files as arguments to the first. Relative imports in `src/` carry the `.ts` extension, so the tests can import any module.
 
 - `test/oauth1.test.mts` checks RFC 3986 percent-encoding and the OAuth1 HMAC-SHA1 signature against the canonical OAuth 1.0a test vector, Twitter's documented example. It builds the signature base string the same way `exchange()` does.
 - `test/exchange-mfa.test.mts` runs `connectapi()` against a stubbed `fetch` and checks the token exchange request it captures. When `mfa_token` is set, it must be in the form body and in the signature, but not in the `Authorization` header. Accounts without MFA must send an unchanged request. The test verifies each signature the way Garmin's server would (RFC 5849).
+- `test/validate.test.mts` checks the rules in `src/validate.ts` one by one. They include coercion traps such as `[123]` and `1e21`, and calendar rollover such as `2026-02-30`.
+- `test/tools.test.mts` runs the tool handlers against a recording `fetch` stub. Invalid arguments must fail before any `fetch`, including the OAuth exchange and `displayName()`. Valid arguments must build exactly today's method, URL and body. It also sends a `tools/call` through `src/index.ts` and checks that a validation failure comes back as `isError`.
 
 `npm run typecheck` runs `tsc --noEmit` over `src/` against `@cloudflare/workers-types`.
 
@@ -95,8 +110,11 @@ Add an entry to the `TOOLS` array in `src/tools.ts`:
   name: "get_something",
   description: "What it returns and when the model should use it.",
   inputSchema: obj({ date: DATE }, ["date"]),
-  handler: (t, a) => connectapi(t, `/some-service/some/${a.date}`),
+  handler: async (t, a) => {
+    const date = dateArg(a.date, "date");
+    return connectapi(t, `/some-service/some/${date}`);
+  },
 },
 ```
 
-`tools/list` and `tools/call` pick it up automatically through `TOOLS` and `TOOL_MAP`.
+Validate every argument that goes into the URL as the handler's first statement. The type checker doesn't catch a raw `${a.date}`, so add a row for the tool to Test 10 in `test/tools.test.mts`. `tools/list` and `tools/call` pick the tool up automatically through `TOOLS` and `TOOL_MAP`.
