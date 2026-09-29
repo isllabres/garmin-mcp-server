@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The Garmin login (SSO + MFA) deliberately does **not** run here. It happens once on the user's machine, and the resulting long-lived OAuth1 token is uploaded as a Worker secret. At runtime the Worker only swaps OAuth1 for OAuth2 (a signed POST) and makes Bearer calls to `connectapi.garmin.com`.
 
-`README.md` (English) is the full user-facing reference: tools, setup, how it works, and troubleshooting. `DESPLIEGUE.md` is the original deployment guide, in Spanish.
+`README.md` (English) is the user-facing reference: tools, setup, local development, and troubleshooting. `docs/ARCHITECTURE.md` (English) holds the internals: transport, Garmin authentication, the Garmin endpoint behind each tool, the project layout, and how to add a tool. `DESPLIEGUE.md` is the original deployment guide, in Spanish.
 
 ## Current state of the code (read before assuming otherwise)
 
@@ -41,7 +41,7 @@ test/          Standalone Node scripts; oauth1.test.mts checks the signature aga
 
 ## Conventions
 
-- **Language.** Code comments, tool `description`s and error messages are in **Spanish written without diacritics** (`Sueno`, `Metodo`, `invalido`, `anio`). Match that in `src/`. `README.md` is English. `DESPLIEGUE.md` is Spanish with normal accents.
+- **Language.** Code comments, tool `description`s and error messages are in **Spanish written without diacritics** (`Sueno`, `Metodo`, `invalido`, `anio`). Match that in `src/`. `README.md` and `docs/ARCHITECTURE.md` are English. `DESPLIEGUE.md` is Spanish with normal accents.
 - **Keep it tiny.** No runtime dependencies, no frameworks, no build step beyond Wrangler's bundler. Anything used at runtime must exist in the Workers runtime (Web Crypto, `fetch`, `btoa`); the same APIs exist in Node, which is why `src/garmin.ts` can be imported straight into tests.
 - **Tests** follow the existing pattern: a plain `.mts` script with a small `check()` helper, `PASS`/`FALLO` output, and a non-zero exit on failure. Pure logic goes in exported functions so it can be tested without the network. Never call real Garmin endpoints from tests.
 
