@@ -52,5 +52,38 @@ const run = (tool: string, args: Record<string, unknown>) => TOOL_MAP.get(tool)!
   check("get_activity con traversal: 0 llamadas a fetch", calls.length, 0);
 }
 
+// --- 9. con argumentos validos, cada herramienta construye exactamente la peticion de hoy ---
+{
+  const A = "https://connectapi.garmin.com";
+  const lastCall = () => {
+    const c = calls[calls.length - 1];
+    return c ? `${c.method} ${c.url}${c.body !== undefined ? ` ${c.body}` : ""}` : "(ninguna)";
+  };
+  for (const [tool, args, want] of [
+    ["get_sleep_data", { date: "2026-03-01" },
+      `GET ${A}/wellness-service/wellness/dailySleepData/atleta?date=2026-03-01&nonSleepBufferMinutes=60`],
+    ["get_hrv_data", { date: "2026-03-01" }, `GET ${A}/hrv-service/hrv/2026-03-01`],
+    ["get_training_readiness", { date: "2026-03-01" }, `GET ${A}/metrics-service/metrics/trainingreadiness/2026-03-01`],
+    ["get_body_battery", { start_date: "2026-03-01", end_date: "2026-03-07" },
+      `GET ${A}/wellness-service/wellness/bodyBattery/reports/daily?startDate=2026-03-01&endDate=2026-03-07`],
+    ["get_stress_data", { date: "2026-03-01" }, `GET ${A}/wellness-service/wellness/dailyStress/2026-03-01`],
+    ["get_activities", {}, `GET ${A}/activitylist-service/activities/search/activities?start=0&limit=20`],
+    ["get_activities", { start: null, limit: null }, `GET ${A}/activitylist-service/activities/search/activities?start=0&limit=20`],
+    ["get_activities", { start: 40, limit: 500 }, `GET ${A}/activitylist-service/activities/search/activities?start=40&limit=500`],
+    ["get_activity", { activity_id: "12345678901" }, `GET ${A}/activity-service/activity/12345678901`],
+    ["get_activity", { activity_id: 12345678901 }, `GET ${A}/activity-service/activity/12345678901`],
+    ["schedule_workout", { workout_id: "987", date: "2026-03-02" },
+      `POST ${A}/workout-service/schedule/987 {"date":"2026-03-02"}`],
+    ["get_scheduled_workouts", { year: 2026, month: 1 }, `GET ${A}/calendar-service/year/2026/month/0`],
+    ["get_scheduled_workouts", { year: 2026, month: 12 }, `GET ${A}/calendar-service/year/2026/month/11`],
+    ["delete_workout", { workout_id: "987" }, `DELETE ${A}/workout-service/workout/987`],
+  ] as [string, Record<string, unknown>, string][]) {
+    calls.length = 0;
+    let got: string;
+    try { await run(tool, args); got = lastCall(); } catch (e) { got = `THROW: ${(e as Error).message}`; }
+    check(`${tool} ${JSON.stringify(args)} construye la peticion de hoy`, got, want);
+  }
+}
+
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
 process.exit(fail ? 1 : 0);
