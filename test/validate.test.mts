@@ -67,5 +67,12 @@ for (const input of [
   check(`dateArg rechaza ${show(input)}`, rejects(() => dateArg(input, "end_date"), "end_date"), "ok");
 }
 
+// --- 6. dateArg rechaza fechas bien formadas que no existen en el calendario ---
+for (const input of [
+  "2026-02-29", "2026-02-30", "2100-02-29", "2026-04-31", "2026-13-01", "2026-00-10", "2026-01-00", "2026-01-32",
+]) {
+  check(`dateArg rechaza ${show(input)}`, rejects(() => dateArg(input, "date"), "date"), "ok");
+}
+
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
 process.exit(fail ? 1 : 0);
