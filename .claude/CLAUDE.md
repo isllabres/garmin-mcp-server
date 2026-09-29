@@ -17,7 +17,7 @@ The Garmin login (SSO + MFA) deliberately does **not** run here. It happens once
 - **Module-level caches.** `tokenCache`, `consumerCache` and `displayNameCache` in `src/garmin.ts` live per isolate and outlive a single request. Tests that import these functions share that state.
 - **Tool errors are not protocol errors.** A failing tool returns `result.isError: true` with the message as text, so the model can react (`src/index.ts`). Keep JSON-RPC `error` for protocol failures only: parse errors, unknown method, unknown tool.
 - **Tool arguments reach Garmin as-is.** Tool arguments (`date`, `activity_id`, `workout_id`, …) are interpolated into URL paths without validation or encoding.
-- **MFA token not forwarded.** `OAuth1Token` ignores the `mfa_token` (and `domain`) fields of `oauth1_token.json`. The exchange never sends `mfa_token`, and the API domain is hard-coded to `garmin.com`.
+- **`domain` is ignored.** `OAuth1Token` reads `mfa_token`, which the exchange sends in its form body and signs, as garth does. It still ignores the `domain` field of `oauth1_token.json`, and the API domain is hard-coded to `garmin.com`.
 - **Tests are not wired into npm.** `test/oauth1.test.mts` is a standalone script with no test runner and no `npm test`. `tsconfig.json` only includes `src/**`, so `npm run typecheck` doesn't cover `test/`.
 - **Placeholder domain.** `wrangler.jsonc` routes to `garmin-mcp.TUDOMINIO.com` with `workers_dev: false`, so a real deploy needs that edited first. Dry-run builds and `wrangler dev` work as-is.
 - **`package.json` has no `"type": "module"`.** Node prints a harmless `MODULE_TYPELESS_PACKAGE_JSON` warning when the test imports `src/garmin.ts`.

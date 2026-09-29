@@ -19,6 +19,9 @@ const CONSUMER_URL = "https://thegarth.s3.amazonaws.com/oauth_consumer.json";
 export interface OAuth1Token {
   oauth_token: string;
   oauth_token_secret: string;
+  // Cuentas con MFA: el intercambio lo envia en el formulario y lo firma, como
+  // garth sso.exchange. garth escribe null cuando la cuenta no tiene MFA.
+  mfa_token?: string | null;
   domain?: string;
 }
 
@@ -79,7 +82,8 @@ async function exchange(oauth1: OAuth1Token): Promise<OAuth2Token> {
   const { key: ck, secret: cs } = await getConsumer();
   const url = `${API}/oauth-service/oauth/exchange/user/2.0`;
 
-  const params: Record<string, string> = {
+  // Parametros del protocolo: van en la cabecera Authorization.
+  const oauth: Record<string, string> = {
     oauth_consumer_key: ck,
     oauth_nonce: crypto.randomUUID().replace(/-/g, ""),
     oauth_signature_method: "HMAC-SHA1",
@@ -87,16 +91,20 @@ async function exchange(oauth1: OAuth1Token): Promise<OAuth2Token> {
     oauth_token: oauth1.oauth_token,
     oauth_version: "1.0",
   };
+  // Parametros del cuerpo de formulario: no van en la cabecera, pero OAuth1
+  // los firma igualmente (RFC 5849 3.4.1.3.1).
+  const form: Record<string, string> = oauth1.mfa_token ? { mfa_token: oauth1.mfa_token } : {};
+  const signed = { ...oauth, ...form };
 
   // Base string: METODO&url&parametros ordenados, todo percent-encoded.
-  const normalized = Object.keys(params).sort()
-    .map((k) => `${pct(k)}=${pct(params[k])}`).join("&");
+  const normalized = Object.keys(signed).sort()
+    .map((k) => `${pct(k)}=${pct(signed[k])}`).join("&");
   const base = `POST&${pct(url)}&${pct(normalized)}`;
   const signingKey = `${pct(cs)}&${pct(oauth1.oauth_token_secret)}`;
-  params.oauth_signature = await hmacSha1(signingKey, base);
+  oauth.oauth_signature = await hmacSha1(signingKey, base);
 
-  const header = "OAuth " + Object.keys(params).sort()
-    .map((k) => `${pct(k)}="${pct(params[k])}"`).join(", ");
+  const header = "OAuth " + Object.keys(oauth).sort()
+    .map((k) => `${pct(k)}="${pct(oauth[k])}"`).join(", ");
 
   const res = await fetch(url, {
     method: "POST",
@@ -105,7 +113,7 @@ async function exchange(oauth1: OAuth1Token): Promise<OAuth2Token> {
       "User-Agent": UA_OAUTH,
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: "",
+    body: Object.entries(form).map(([k, v]) => `${pct(k)}=${pct(v)}`).join("&"),
   });
   if (!res.ok) {
     throw new Error(
