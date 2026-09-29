@@ -22,3 +22,8 @@ export function dateArg(value: unknown, name: string): string {
   }
   throw invalid(name, "debe ser una fecha real YYYY-MM-DD");
 }
+
+/** Entero dentro de [min, max], ambos inclusive (sin maximo si se omite). Lo devuelve como numero. */
+export function intArg(value: unknown, name: string, min: number, max?: number): number {
+  return value as number;
+}

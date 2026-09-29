@@ -1,6 +1,6 @@
 // Valida las reglas de src/validate.ts: formato, calendario, signo, rango y tipo.
 // Funciones puras: sin dobles, sin red.
-import { idArg, dateArg } from "../src/validate.ts";
+import { idArg, dateArg, intArg } from "../src/validate.ts";
 
 let fail = 0;
 const check = (name: string, got: unknown, want: unknown) => {
@@ -72,6 +72,21 @@ for (const input of [
   "2026-02-29", "2026-02-30", "2100-02-29", "2026-04-31", "2026-13-01", "2026-00-10", "2026-01-00", "2026-01-32",
 ]) {
   check(`dateArg rechaza ${show(input)}`, rejects(() => dateArg(input, "date"), "date"), "ok");
+}
+
+// --- 7. intArg acepta enteros en los limites inclusivos y los devuelve como numero ---
+for (const [label, call, want] of [
+  ['intArg(1, "month", 1, 12)', () => intArg(1, "month", 1, 12), 1],
+  ['intArg(12, "month", 1, 12)', () => intArg(12, "month", 1, 12), 12],
+  ['intArg(1000, "year", 1000, 9999)', () => intArg(1000, "year", 1000, 9999), 1000],
+  ['intArg(9999, "year", 1000, 9999)', () => intArg(9999, "year", 1000, 9999), 9999],
+  ['intArg(0, "start", 0)', () => intArg(0, "start", 0), 0],
+  ['intArg(1, "limit", 1)', () => intArg(1, "limit", 1), 1],
+  ['intArg(100000, "limit", 1)', () => intArg(100000, "limit", 1), 100000],
+] as [string, () => unknown, number][]) {
+  let got: unknown;
+  try { got = call(); } catch (e) { got = `THROW: ${(e as Error).message}`; }
+  check(`${label} devuelve ${want}`, got, want);
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
