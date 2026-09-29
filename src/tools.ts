@@ -1,4 +1,5 @@
 import { connectapi, displayName, type OAuth1Token } from "./garmin.ts";
+import { idArg } from "./validate.ts";
 
 type Handler = (t: OAuth1Token, a: Record<string, any>) => Promise<unknown>;
 
@@ -78,7 +79,10 @@ export const TOOLS: Tool[] = [
     name: "get_activity",
     description: "Detalle completo de una actividad: potencia, FC, vueltas y series.",
     inputSchema: obj({ activity_id: { type: "string" } }, ["activity_id"]),
-    handler: (t, a) => connectapi(t, `/activity-service/activity/${a.activity_id}`),
+    handler: async (t, a) => {
+      const id = idArg(a.activity_id, "activity_id");
+      return connectapi(t, `/activity-service/activity/${id}`);
+    },
   },
 
   // ---------- entrenos: escritura ----------
