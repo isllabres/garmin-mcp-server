@@ -52,6 +52,31 @@ const run = (tool: string, args: Record<string, unknown>) => TOOL_MAP.get(tool)!
   check("get_activity con traversal: 0 llamadas a fetch", calls.length, 0);
 }
 
+// --- 10. cada herramienta con argumentos rechaza los invalidos antes de cualquier fetch ---
+// Va antes del test 9: get_sleep_data debe validar antes de await displayName(),
+// y eso solo se observa mientras la cache de displayName sigue vacia.
+for (const [tool, args, argName] of [
+  ["get_sleep_data", { date: "2026-02-30" }, "date"],
+  ["get_hrv_data", { date: "../../userprofile-service/userprofile/user-settings" }, "date"],
+  ["get_training_readiness", { date: "2026-3-1" }, "date"],
+  ["get_stress_data", {}, "date"],
+  ["get_body_battery", { start_date: "2026-01-01", end_date: "2026-01-02&foo=bar" }, "end_date"],
+  ["get_body_battery", { start_date: "2026-1-1", end_date: "2026-01-02" }, "start_date"],
+  ["get_activities", { limit: -5 }, "limit"],
+  ["get_activities", { start: 1.5 }, "start"],
+  ["get_scheduled_workouts", { year: 2026, month: 13 }, "month"],
+  ["get_scheduled_workouts", { year: 2026, month: "abc" }, "month"],
+  ["get_scheduled_workouts", { year: 26, month: 3 }, "year"],
+  ["schedule_workout", { workout_id: "../../userprofile-service/socialProfile", date: "2026-03-02" }, "workout_id"],
+  ["schedule_workout", { workout_id: "987", date: "2026-02-30" }, "date"],
+  ["delete_workout", { workout_id: "../../activity-service/activity/1" }, "workout_id"],
+] as [string, Record<string, unknown>, string][]) {
+  calls.length = 0;
+  const label = `${tool} ${JSON.stringify(args)}`;
+  check(`${label} rechaza ${argName}`, await rejects(() => run(tool, args), argName), "ok");
+  check(`${label}: 0 llamadas a fetch`, calls.length, 0);
+}
+
 // --- 9. con argumentos validos, cada herramienta construye exactamente la peticion de hoy ---
 {
   const A = "https://connectapi.garmin.com";
