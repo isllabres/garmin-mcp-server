@@ -1,8 +1,8 @@
 // MCP server de Garmin sobre Cloudflare Workers (free tier).
 // Transporte: Streamable HTTP, sin estado — cada POST se responde con JSON.
 
-import { TOOLS, TOOL_MAP } from "./tools";
-import { presetConsumer, type OAuth1Token } from "./garmin";
+import { TOOLS, TOOL_MAP } from "./tools.ts";
+import { presetConsumer, type OAuth1Token } from "./garmin.ts";
 
 const PROTOCOL = "2025-06-18";
 

@@ -1,4 +1,4 @@
-import { connectapi, displayName, type OAuth1Token } from "./garmin";
+import { connectapi, displayName, type OAuth1Token } from "./garmin.ts";
 
 type Handler = (t: OAuth1Token, a: Record<string, any>) => Promise<unknown>;
 

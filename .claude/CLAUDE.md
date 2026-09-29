@@ -42,7 +42,8 @@ test/          Standalone Node scripts; oauth1.test.mts checks the signature aga
 ## Conventions
 
 - **Language.** Code comments, tool `description`s and error messages are in **Spanish written without diacritics** (`Sueno`, `Metodo`, `invalido`, `anio`). Match that in `src/`. `README.md` and `docs/ARCHITECTURE.md` are English. `DESPLIEGUE.md` is Spanish with normal accents.
-- **Keep it tiny.** No runtime dependencies, no frameworks, no build step beyond Wrangler's bundler. Anything used at runtime must exist in the Workers runtime (Web Crypto, `fetch`, `btoa`); the same APIs exist in Node, which is why `src/garmin.ts` can be imported straight into tests.
+- **Keep it tiny.** No runtime dependencies, no frameworks, no build step beyond Wrangler's bundler. Anything used at runtime must exist in the Workers runtime (Web Crypto, `fetch`, `btoa`); the same APIs exist in Node, which is why `src/` modules can be imported straight into tests.
+- **Relative imports** in `src/` carry the `.ts` extension (`import … from "./garmin.ts"`, enabled by `allowImportingTsExtensions`). Node's test loader needs it. An import without the extension still passes `tsc` and Wrangler, but it breaks every test that imports that module.
 - **Tests** follow the existing pattern: a plain `.mts` script with a small `check()` helper, `PASS`/`FALLO` output, and a non-zero exit on failure. Pure logic goes in exported functions so it can be tested without the network. Never call real Garmin endpoints from tests.
 
 ## Development commands
