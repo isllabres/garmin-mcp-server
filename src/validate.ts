@@ -4,5 +4,6 @@
 /** Entero positivo en forma de cadena de digitos. Devuelve la cadena a interpolar. */
 export function idArg(value: unknown, name: string): string {
   if (typeof value === "string" && /^\d+$/.test(value)) return value;
+  if (typeof value === "number" && Number.isInteger(value)) return String(value);
   throw new Error(`${name} invalido: debe ser un entero positivo`);
 }
