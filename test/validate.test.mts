@@ -1,6 +1,6 @@
 // Valida las reglas de src/validate.ts: formato, calendario, signo, rango y tipo.
 // Funciones puras: sin dobles, sin red.
-import { idArg } from "../src/validate.ts";
+import { idArg, dateArg } from "../src/validate.ts";
 
 let fail = 0;
 const check = (name: string, got: unknown, want: unknown) => {
@@ -50,6 +50,13 @@ for (const input of [
   check(`idArg rechaza ${show(input)}`, rejects(() => idArg(input, "activity_id"), "activity_id"), "ok");
 }
 check("idArg nombra el argumento recibido (workout_id)", rejects(() => idArg("abc", "workout_id"), "workout_id"), "ok");
+
+// --- 4. dateArg devuelve sin cambios las fechas reales YYYY-MM-DD ---
+for (const input of ["2026-03-01", "2026-01-01", "2026-12-31", "2024-02-29", "2000-02-29"]) {
+  let got: unknown;
+  try { got = dateArg(input, "date"); } catch (e) { got = `THROW: ${(e as Error).message}`; }
+  check(`dateArg acepta ${input}`, got, input);
+}
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
 process.exit(fail ? 1 : 0);

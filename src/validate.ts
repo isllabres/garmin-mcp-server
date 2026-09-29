@@ -10,3 +10,9 @@ export function idArg(value: unknown, name: string): string {
   if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return String(value);
   throw invalid(name, "debe ser un entero positivo");
 }
+
+/** Fecha real en formato YYYY-MM-DD. La devuelve sin cambios. */
+export function dateArg(value: unknown, name: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return value as string;
+  throw invalid(name, "debe ser una fecha real YYYY-MM-DD");
+}
