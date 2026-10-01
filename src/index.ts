@@ -106,8 +106,9 @@ export default {
     try { body = await request.json(); }
     catch { return json(rpcErr(null, -32700, "JSON invalido"), 400); }
 
-    // El cliente puede mandar un lote.
+    // El cliente puede mandar un lote. Uno vacio recibe un solo error, no una lista.
     if (Array.isArray(body)) {
+      if (body.length === 0) return json(invalidRequest());
       const out = (await Promise.all(body.map((m) => handleRpc(m, oauth1))))
         .filter((r) => r !== null);
       return out.length ? json(out) : new Response(null, { status: 202 });

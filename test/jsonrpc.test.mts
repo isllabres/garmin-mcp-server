@@ -86,5 +86,23 @@ for (const raw of ["5", '"x"', "true", "false"]) {
   check("T4 lote mixto: 2 errores -32600 con id null", count(INVALID_REQUEST), 2, r.text);
 }
 
+// --- T5 should_answer_single_non_array_invalid_request_when_batch_is_empty ---
+// Un lote vacio recibia un 202 mudo. JSON-RPC §6: se responde un solo error, no una lista.
+{
+  const r = await post("[]");
+  const body = parse(r.text);
+  check("T5 lote vacio: HTTP 200", r.status, 200, r.rejected ?? r.text);
+  check("T5 lote vacio: la respuesta no es una lista", Array.isArray(body), false, r.text);
+  check("T5 lote vacio: -32600 con id null", isDeepStrictEqual(body, INVALID_REQUEST), true, r.text);
+}
+
+// --- T6 should_still_answer_202_empty_when_batch_contains_only_notifications ---
+// Sigue igual que antes. Falla si el lote vacio se mira en la salida filtrada y no en la entrada.
+{
+  const r = await post(JSON.stringify([NOTIF, NOTIF]));
+  check("T6 lote solo de notificaciones: HTTP 202", r.status, 202, r.rejected ?? r.text);
+  check("T6 lote solo de notificaciones: cuerpo vacio", r.text, "");
+}
+
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
 process.exit(fail ? 1 : 0);
