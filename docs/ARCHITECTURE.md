@@ -16,7 +16,7 @@ The Garmin login (SSO, MFA and a WebView user agent) is deliberately kept out of
 1. A signed OAuth1 (HMAC-SHA1) `POST` that exchanges the OAuth1 token, valid for about a year, for an OAuth2 access token, valid for about an hour.
 2. `GET`, `POST` and `DELETE` requests to `connectapi.garmin.com` with that Bearer token.
 
-The endpoints, user agents and exchange flow come from [garth](https://github.com/matin/garth) 0.8.0 and [python-garminconnect](https://github.com/cyberjunky/python-garminconnect) 0.3.2.
+The endpoints, user agents and exchange flow come from [garth](https://github.com/matin/garth) 0.8.0 and [python-garminconnect](https://github.com/cyberjunky/python-garminconnect) 0.3.2. The `/splits` and `/exerciseSets` endpoints behind `get_activity_splits` and `get_activity_exercise_sets` were checked against python-garminconnect 0.3.16.
 
 ## MCP transport
 
@@ -57,6 +57,8 @@ Tool descriptions are written in Spanish because the model reads them. Each tool
 | `get_stress_data` | `GET /wellness-service/wellness/dailyStress/{date}` |
 | `get_activities` | `GET /activitylist-service/activities/search/activities?start=…&limit=…` |
 | `get_activity` | `GET /activity-service/activity/{id}` |
+| `get_activity_splits` | `GET /activity-service/activity/{id}/splits` |
+| `get_activity_exercise_sets` | `GET /activity-service/activity/{id}/exerciseSets` |
 | `upload_workout` | `POST /workout-service/workout` |
 | `schedule_workout` | `POST /workout-service/schedule/{id}` with body `{"date": …}` |
 | `get_scheduled_workouts` | `GET /calendar-service/year/{year}/month/{month - 1}` |
@@ -78,18 +80,19 @@ Invalid input becomes an `isError` result with a message such as `month invalido
 ## Project layout
 
 ```
-src/index.ts                Worker entry point: Bearer check, JSON-RPC/MCP dispatch
-src/garmin.ts               Garmin client: OAuth1 signing, OAuth2 exchange, caching, connectapi()
-src/tools.ts                Tool definitions: name, description, JSON Schema, handler
-src/validate.ts             Argument validation: idArg, dateArg, intArg
-test/oauth1.test.mts        OAuth1 signature test against the canonical vector
-test/exchange-mfa.test.mts  Token exchange test: mfa_token in the form body and the signature
-test/validate.test.mts      Validation rules: format, calendar, sign, range and type
-test/tools.test.mts         Tool requests: invalid arguments never reach fetch; valid ones build today's URLs
-test/jsonrpc.test.mts       JSON-RPC framing: messages that are not objects and the empty batch get -32600
-wrangler.jsonc              Worker config: name, route, observability
-docs/ARCHITECTURE.md        This document
-DESPLIEGUE.md               Deployment guide (Spanish)
+src/index.ts                  Worker entry point: Bearer check, JSON-RPC/MCP dispatch
+src/garmin.ts                 Garmin client: OAuth1 signing, OAuth2 exchange, caching, connectapi()
+src/tools.ts                  Tool definitions: name, description, JSON Schema, handler
+src/validate.ts               Argument validation: idArg, dateArg, intArg
+test/oauth1.test.mts          OAuth1 signature test against the canonical vector
+test/exchange-mfa.test.mts    Token exchange test: mfa_token in the form body and the signature
+test/validate.test.mts        Validation rules: format, calendar, sign, range and type
+test/tools.test.mts           Tool requests: invalid arguments never reach fetch; valid ones build today's URLs
+test/jsonrpc.test.mts         JSON-RPC framing: messages that are not objects and the empty batch get -32600
+test/activity-tools.test.mts  Activity detail tools: registration, schema, endpoints, descriptions, invalid ids
+wrangler.jsonc                Worker config: name, route, observability
+docs/ARCHITECTURE.md          This document
+DESPLIEGUE.md                 Deployment guide (Spanish)
 ```
 
 ## Testing
@@ -101,6 +104,7 @@ Tests are standalone Node scripts in `test/`, and none of them touches the netwo
 - `test/validate.test.mts` checks the rules in `src/validate.ts` one by one. They include coercion traps such as `[123]` and `1e21`, and calendar rollover such as `2026-02-30`.
 - `test/tools.test.mts` runs the tool handlers against a recording `fetch` stub. Invalid arguments must fail before any `fetch`, including the OAuth exchange and `displayName()`. Valid arguments must build exactly today's method, URL and body. It also sends a `tools/call` through `src/index.ts` and checks that a validation failure comes back as `isError`.
 - `test/jsonrpc.test.mts` sends raw bodies to the Worker's `fetch` handler. The global `fetch` is replaced by a stub that throws, so nothing reaches the network. A single message that is not an object (`null`, a number, a string, a boolean) and an empty batch must get HTTP `200` with `-32600` and `id: null`. In a batch, each such item, including `null` and a nested array, gets its own `-32600` entry, and a batch made only of notifications still gets `202` with no body.
+- `test/activity-tools.test.mts` covers `get_activity_splits` and `get_activity_exercise_sets`. Both must be registered with the same required `activity_id` schema as `get_activity`, and send exactly one `GET` to `/splits` or `/exerciseSets`, returning Garmin's JSON unchanged. `get_activity`'s description must not promise laps or sets and must name both tools, and the three descriptions must have no diacritics. Through `tools/call`, an invalid `activity_id` must give the same `isError` text as `get_activity`, with no `fetch` at all.
 
 `npm run typecheck` runs `tsc --noEmit` over `src/` against `@cloudflare/workers-types`.
 

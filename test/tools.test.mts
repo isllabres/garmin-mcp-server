@@ -77,6 +77,8 @@ for (const [tool, args, argName] of [
   ["schedule_workout", { workout_id: "../../userprofile-service/socialProfile", date: "2026-03-02" }, "workout_id"],
   ["schedule_workout", { workout_id: "987", date: "2026-02-30" }, "date"],
   ["delete_workout", { workout_id: "../../activity-service/activity/1" }, "workout_id"],
+  ["get_activity_splits", { activity_id: "../../userprofile-service/socialProfile" }, "activity_id"],
+  ["get_activity_exercise_sets", { activity_id: "../../userprofile-service/socialProfile" }, "activity_id"],
 ] as [string, Record<string, unknown>, string][]) {
   calls.length = 0;
   const label = `${tool} ${JSON.stringify(args)}`;
