@@ -22,8 +22,14 @@ const json = (body: unknown, status = 200) =>
     status, headers: { "Content-Type": "application/json" },
   });
 
-async function handleRpc(req: any, oauth1: OAuth1Token): Promise<unknown | null> {
-  if (req === null) return rpcErr(null, -32600, "Peticion invalida");
+// Solo un objeto puede ser un mensaje JSON-RPC. Lo demas (null, un numero, un
+// texto, un booleano) recibe -32600 con id null: su id no se puede leer.
+type RpcMessage = { id?: unknown; method?: unknown; params?: any };
+const isMessage = (m: unknown): m is RpcMessage => typeof m === "object" && m !== null;
+const invalidRequest = () => rpcErr(null, -32600, "Peticion invalida");
+
+async function handleRpc(req: unknown, oauth1: OAuth1Token): Promise<unknown | null> {
+  if (!isMessage(req)) return invalidRequest();
   const { id, method, params } = req;
 
   switch (method) {

@@ -64,5 +64,27 @@ const NOTIF = { jsonrpc: "2.0", method: "notifications/initialized" };
   check("T2 lote [null]: [-32600 con id null]", isDeepStrictEqual(parse(r.text), [INVALID_REQUEST]), true, r.text);
 }
 
+// --- T3 should_answer_invalid_request_when_single_message_is_a_non_null_primitive ---
+// Un mensaje primitivo recibia un 202 mudo. Mezcla verdaderos y un falso (false)
+// para que una guarda parcial como !req o req === null falle al menos uno.
+for (const raw of ["5", '"x"', "true", "false"]) {
+  const r = await post(raw);
+  check(`T3 cuerpo ${raw}: HTTP 200 y -32600 con id null`,
+    r.status === 200 && isDeepStrictEqual(parse(r.text), INVALID_REQUEST), true,
+    `HTTP ${r.status} ${r.rejected ?? r.text}`);
+}
+
+// --- T4 should_return_valid_responses_plus_one_error_per_invalid_item_in_mixed_batch ---
+// Antes 5 y "x" se trataban como notificaciones. No se fija el orden: JSON-RPC §6 lo deja libre.
+{
+  const r = await post(JSON.stringify([PING_REQ, 5, NOTIF, "x"]));
+  const body = parse(r.text);
+  const count = (want: unknown) => Array.isArray(body) ? body.filter((e) => isDeepStrictEqual(e, want)).length : -1;
+  check("T4 lote mixto: HTTP 200", r.status, 200, r.rejected ?? r.text);
+  check("T4 lote mixto: 3 entradas", Array.isArray(body) ? body.length : -1, 3, r.text);
+  check("T4 lote mixto: 1 respuesta de ping", count(PING_RES), 1, r.text);
+  check("T4 lote mixto: 2 errores -32600 con id null", count(INVALID_REQUEST), 2, r.text);
+}
+
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
 process.exit(fail ? 1 : 0);
