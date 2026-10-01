@@ -23,6 +23,7 @@ const json = (body: unknown, status = 200) =>
   });
 
 async function handleRpc(req: any, oauth1: OAuth1Token): Promise<unknown | null> {
+  if (req === null) return rpcErr(null, -32600, "Peticion invalida");
   const { id, method, params } = req;
 
   switch (method) {
