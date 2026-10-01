@@ -84,5 +84,25 @@ for (const [test, name, suffix, data] of [
   check(`${test} ${name}: devuelve el JSON de Garmin sin cambios`, JSON.stringify(result), JSON.stringify(data));
 }
 
+// --- T5 should_describe_get_activity_as_a_summary_and_point_to_the_splits_and_exercise_sets_tools ---
+// El defecto original: get_activity prometia vueltas y series y nunca las devuelve.
+// No se prohiben "vueltas" ni "series": puede decir que no las trae y donde estan.
+{
+  const OLD = "Detalle completo de una actividad: potencia, FC, vueltas y series.";
+  const d = TOOL_MAP.get("get_activity")!.description;
+  check("T5 get_activity ya no tiene la descripcion antigua", d !== OLD, true);
+  check("T5 get_activity no promete el detalle completo", d.includes("Detalle completo"), false);
+  check("T5 get_activity nombra get_activity_splits", d.includes("get_activity_splits"), true);
+  check("T5 get_activity nombra get_activity_exercise_sets", d.includes("get_activity_exercise_sets"), true);
+  check("T5 las dos herramientas que nombra existen",
+    TOOL_MAP.has("get_activity_splits") && TOOL_MAP.has("get_activity_exercise_sets"), true);
+}
+
+// --- T6 should_write_the_activity_tool_descriptions_in_spanish_without_diacritics ---
+// Solo letras con tilde, dieresis o enie y los signos de apertura: la raya (—) se permite.
+for (const name of ["get_activity", ...NEW_TOOLS]) {
+  check(`T6 ${name}: descripcion sin diacriticos`, /[áéíóúüñÁÉÍÓÚÜÑ¿¡]/.test(TOOL_MAP.get(name)!.description), false);
+}
+
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
 process.exit(fail ? 1 : 0);

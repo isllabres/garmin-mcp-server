@@ -7,7 +7,7 @@ import { idArg, dateArg, intArg, invalid } from "./validate.ts";
 type Handler = (t: OAuth1Token, a: Record<string, unknown>) => Promise<unknown>;
 
 const DATE = { type: "string", description: "Fecha YYYY-MM-DD" } as const;
-const ACTIVITY_ID = { type: "string" } as const;
+const ACTIVITY_ID = { type: "string", description: "activityId tal como viene en get_activities" } as const;
 
 export interface Tool {
   name: string;
@@ -98,7 +98,11 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "get_activity",
-    description: "Detalle completo de una actividad: potencia, FC, vueltas y series.",
+    description:
+      "Resumen de una actividad: totales y medias (duracion, distancia, FC, " +
+      "potencia, carga) y resumenes agregados por tipo de tramo. No trae el " +
+      "detalle vuelta a vuelta ni las series de fuerza: para eso usa " +
+      "get_activity_splits o get_activity_exercise_sets.",
     inputSchema: obj({ activity_id: ACTIVITY_ID }, ["activity_id"]),
     handler: async (t, a) => {
       const id = idArg(a.activity_id, "activity_id");
@@ -107,7 +111,10 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "get_activity_splits",
-    description: "Vueltas de una actividad.",
+    description:
+      "Vueltas (laps) de una actividad, una por una: duracion, distancia, ritmo " +
+      "o velocidad, FC y potencia de cada vuelta. Usalo para series o intervalos " +
+      "de carrera, bici o natacion (p. ej. 6x1000) y para ver como evoluciono el ritmo.",
     inputSchema: obj({ activity_id: ACTIVITY_ID }, ["activity_id"]),
     handler: async (t, a) => {
       const id = idArg(a.activity_id, "activity_id");
@@ -116,7 +123,11 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "get_activity_exercise_sets",
-    description: "Series de fuerza de una actividad.",
+    description:
+      "Series de un entreno de fuerza, una por una: ejercicio, repeticiones, peso " +
+      "y duracion. Solo tiene datos en actividades de fuerza (strength_training); " +
+      "para series de carrera o bici usa get_activity_splits. Si viene vacio, no " +
+      "hay series registradas.",
     inputSchema: obj({ activity_id: ACTIVITY_ID }, ["activity_id"]),
     handler: async (t, a) => {
       const id = idArg(a.activity_id, "activity_id");
