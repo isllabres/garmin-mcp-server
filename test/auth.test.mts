@@ -52,5 +52,16 @@ for (const [label, header] of [
 check("auth: sin cabecera", await run(() => isAuthorized(null, TOKEN, timingSafeEqual)), false);
 check("auth: cabecera vacia", await run(() => isAuthorized("", TOKEN, timingSafeEqual)), false);
 
+// --- T5 should_reject_every_header_when_UPSTREAM_TOKEN_is_missing_or_empty ---
+// Sin la guarda, un Worker desplegado sin el secreto aceptaria "Bearer " o
+// "Bearer undefined": acceso total a la cuenta.
+for (const [label, header, token] of [
+  ["auth: UPSTREAM_TOKEN vacio", "Bearer ", ""],
+  ["auth: UPSTREAM_TOKEN ausente", "Bearer undefined", undefined],
+  ["auth: sin token ni cabecera", null, ""],
+] as [string, string | null, string | undefined][]) {
+  check(label, await run(() => isAuthorized(header, token, timingSafeEqual)), false);
+}
+
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
 process.exit(fail ? 1 : 0);
