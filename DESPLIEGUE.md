@@ -75,7 +75,7 @@ curl -s -X POST https://garmin-mcp.TUDOMINIO.com \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-## Las 12 herramientas
+## Las 14 herramientas
 
 | Herramienta | Para qué |
 |---|---|
@@ -84,7 +84,9 @@ curl -s -X POST https://garmin-mcp.TUDOMINIO.com \
 | `get_training_readiness` | Puntuación 0-100 y sus factores |
 | `get_body_battery` | Energía disponible por días |
 | `get_stress_data` | Estrés a lo largo del día |
-| `get_activities` / `get_activity` | Actividades y su detalle |
+| `get_activities` / `get_activity` | Actividades y su resumen |
+| `get_activity_splits` | Vueltas de una actividad, una a una |
+| `get_activity_exercise_sets` | Series de una sesión de fuerza |
 | `upload_workout` | Crear entreno — **admite kg** (`weightValue`) |
 | `schedule_workout` | Ponerlo en el calendario |
 | `get_scheduled_workouts` | Ver el mes |

@@ -109,6 +109,7 @@ export const TOOLS: Tool[] = [
       return connectapi(t, `/activity-service/activity/${id}`);
     },
   },
+  // Rutas de vueltas y series comprobadas en python-garminconnect 0.3.16.
   {
     name: "get_activity_splits",
     description:

@@ -1,6 +1,6 @@
 # garmin-mcp-server
 
-An [MCP](https://modelcontextprotocol.io) server that gives Claude, or any MCP client, access to a Garmin Connect account through 12 tools: recovery data (sleep, HRV, training readiness, Body Battery, stress), activities, and workouts. It runs as a single Cloudflare Worker on the free tier, with no runtime dependencies.
+An [MCP](https://modelcontextprotocol.io) server that gives Claude, or any MCP client, access to a Garmin Connect account through 14 tools: recovery data (sleep, HRV, training readiness, Body Battery, stress), activities, and workouts. It runs as a single Cloudflare Worker on the free tier, with no runtime dependencies.
 
 > **Unofficial API.** The server relies on the Garmin Connect app's private endpoints, which can change without notice. Garmin may suspend accounts that use them. Use at your own risk.
 
@@ -16,7 +16,9 @@ Dates are `YYYY-MM-DD`. Tools return Garmin's JSON unchanged.
 | `get_body_battery` | `start_date`, `end_date` | Daily Body Battery charge and drain |
 | `get_stress_data` | `date` | Stress over the day (0–100) |
 | `get_activities` | `start` (default 0), `limit` (default 20) | Recent activities, newest first |
-| `get_activity` | `activity_id` | Details of one activity |
+| `get_activity` | `activity_id` | Activity summary with basic split summaries |
+| `get_activity_splits` | `activity_id` | Laps of one activity, one by one |
+| `get_activity_exercise_sets` | `activity_id` | Sets of one strength session: exercise, reps, weight |
 | `upload_workout` | `workout` (Garmin workout DTO) | Creates a workout; returns `workoutId` |
 | `schedule_workout` | `workout_id`, `date` | Adds a workout to the calendar |
 | `get_scheduled_workouts` | `year`, `month` (1–12) | Calendar items for a month |
