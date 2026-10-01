@@ -3,6 +3,7 @@
 // vueltas ni series.
 import { TOOLS, TOOL_MAP } from "../src/tools.ts";
 import { presetConsumer } from "../src/garmin.ts";
+import worker from "../src/index.ts";
 
 let fail = 0;
 const check = (name: string, got: unknown, want: unknown) => {
@@ -102,6 +103,43 @@ for (const [test, name, suffix, data] of [
 // Solo letras con tilde, dieresis o enie y los signos de apertura: la raya (—) se permite.
 for (const name of ["get_activity", ...NEW_TOOLS]) {
   check(`T6 ${name}: descripcion sin diacriticos`, /[áéíóúüñÁÉÍÓÚÜÑ¿¡]/.test(TOOL_MAP.get(name)!.description), false);
+}
+
+// --- T7 should_reject_an_invalid_activity_id_on_the_new_tools_before_any_fetch_exactly_like_get_activity ---
+// Por tools/call: un activity_id invalido es un error de la herramienta (isError), con el
+// mismo texto que da get_activity y sin ninguna llamada a fetch, ni siquiera el intercambio.
+// "12/../34" importa: la URL se normalizaria a /activity/34/... y leeria otra actividad.
+{
+  const ENV = {
+    GARMIN_OAUTH1: JSON.stringify(TOKEN), UPSTREAM_TOKEN: "test-upstream",
+    GARMIN_CONSUMER_KEY: "test-consumer-key", GARMIN_CONSUMER_SECRET: "test-consumer-secret",
+  };
+  type RpcBody = { error?: unknown; result?: { isError?: boolean; content?: { text: string }[] } };
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const res = await worker.fetch(new Request("http://localhost/", {
+      method: "POST",
+      headers: { Authorization: "Bearer test-upstream", "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
+    }), ENV);
+    return await res.json() as RpcBody;
+  };
+  for (const args of [{ activity_id: "abc" }, { activity_id: "12/../34" }, {}]) {
+    calls.length = 0;
+    const ref = await call("get_activity", args);
+    const refText = ref.result?.content?.[0]?.text;
+    // Sin esto, dos textos undefined coincidirian y la paridad pasaria sin probar nada.
+    check(`T7 get_activity ${JSON.stringify(args)}: la referencia es isError con texto`,
+      ref.result?.isError === true && typeof refText === "string", true);
+    for (const name of NEW_TOOLS) {
+      calls.length = 0;
+      const got = await call(name, args);
+      const label = `T7 ${name} ${JSON.stringify(args)}`;
+      check(`${label}: no es un error JSON-RPC`, got.error, undefined);
+      check(`${label}: result.isError`, got.result?.isError, true);
+      check(`${label}: mismo texto que get_activity`, got.result?.content?.[0]?.text, refText);
+      check(`${label}: 0 llamadas a fetch`, calls.length, 0);
+    }
+  }
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
