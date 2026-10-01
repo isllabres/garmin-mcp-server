@@ -26,9 +26,31 @@ const OK = "Bearer tok_abc123";
 check("auth: token correcto", await run(() => isAuthorized(OK, TOKEN, timingSafeEqual)), true);
 
 // --- T2 should_take_the_verdict_from_the_injected_comparator ---
-// Unica guarda automatica de que se usa la primitiva de tiempo constante: si alguien
-// vuelve a comparar con ===, el resultado pasa a ser true. El stub solo da datos.
+// Guarda que el veredicto lo da eq y no ===: si alguien vuelve a comparar con ===,
+// el resultado pasa a ser true. Que el eq por defecto sea la primitiva de Workers
+// no lo comprueba ningun test automatico; solo la revision y la prueba manual T6.
+// El stub solo da datos.
 check("auth: decide el comparador", await run(() => isAuthorized(OK, TOKEN, () => false)), false);
+
+// --- T3 should_reject_a_wrong_token_of_any_length_without_throwing ---
+// Las dos primitivas lanzan si las longitudes en bytes difieren; en Workers eso
+// seria un 500 (error 1101) donde toca un 401. "Bearer tok_abc12ñ" tiene 17
+// caracteres, como el valido, pero 18 bytes: pilla comparar string.length.
+for (const [label, header] of [
+  ["auth: token distinto, misma longitud", "Bearer tok_abc124"],
+  ["auth: esquema en minusculas", "bearer tok_abc123"],
+  ["auth: token mas corto (sin excepcion)", "Bearer tok_abc12"],
+  ["auth: token mas largo (sin excepcion)", "Bearer tok_abc1234"],
+  ["auth: multibyte, distinta longitud en bytes", "Bearer tok_abc12ñ"],
+]) {
+  check(label, await run(() => isAuthorized(header, TOKEN, timingSafeEqual)), false);
+}
+
+// --- T4 should_reject_when_the_Authorization_header_is_missing_or_empty ---
+// Headers.get devuelve null si no hay cabecera. Guarda contra un header.length
+// que reviente con null.
+check("auth: sin cabecera", await run(() => isAuthorized(null, TOKEN, timingSafeEqual)), false);
+check("auth: cabecera vacia", await run(() => isAuthorized("", TOKEN, timingSafeEqual)), false);
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
 process.exit(fail ? 1 : 0);
