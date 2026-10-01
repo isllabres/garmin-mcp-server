@@ -109,7 +109,10 @@ export const TOOLS: Tool[] = [
     name: "get_activity_splits",
     description: "Vueltas de una actividad.",
     inputSchema: obj({ activity_id: ACTIVITY_ID }, ["activity_id"]),
-    handler: async () => { throw new Error("no implementado"); },
+    handler: async (t, a) => {
+      const id = idArg(a.activity_id, "activity_id");
+      return connectapi(t, `/activity-service/activity/${id}/splits`);
+    },
   },
   {
     name: "get_activity_exercise_sets",

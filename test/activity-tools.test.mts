@@ -2,6 +2,7 @@
 // get_activity_exercise_sets (series de fuerza), y que get_activity ya no promete
 // vueltas ni series.
 import { TOOLS, TOOL_MAP } from "../src/tools.ts";
+import { presetConsumer } from "../src/garmin.ts";
 
 let fail = 0;
 const check = (name: string, got: unknown, want: unknown) => {
@@ -11,6 +12,29 @@ const check = (name: string, got: unknown, want: unknown) => {
 };
 
 const NEW_TOOLS = ["get_activity_splits", "get_activity_exercise_sets"];
+
+// Stub de fetch que graba cada llamada. Contesta el intercambio OAuth y las rutas
+// de actividad (con el fixture del test en curso); cualquier otra URL lanza, asi
+// que una llamada no prevista falla en vez de salir a la red.
+const EXCHANGE = "https://connectapi.garmin.com/oauth-service/oauth/exchange/user/2.0";
+const ACTIVITY = "https://connectapi.garmin.com/activity-service/activity/";
+const calls: { url: string; method: string; body: unknown }[] = [];
+let fixture: unknown;
+globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = String(input);
+  calls.push({ url, method: init?.method ?? "GET", body: init?.body });
+  if (url === EXCHANGE && init?.method === "POST") {
+    return new Response(JSON.stringify({ access_token: "test-access-token", expires_in: 3600 }), { status: 200 });
+  }
+  if (url.startsWith(ACTIVITY)) return new Response(JSON.stringify(fixture), { status: 200 });
+  throw new Error("fetch inesperado: " + url);
+};
+// Llamadas a la API sin el intercambio: tokenCache vive en el modulo y depende del orden de los tests.
+const apiCalls = () => calls.filter((c) => c.url !== EXCHANGE);
+
+// Consumer precargado: nada se pide al bucket S3.
+presetConsumer("test-consumer-key", "test-consumer-secret");
+const TOKEN = { oauth_token: "test-token", oauth_token_secret: "test-token-secret" };
 
 // --- T1 should_register_get_activity_splits_and_get_activity_exercise_sets_with_unique_names ---
 {
@@ -34,6 +58,23 @@ const NEW_TOOLS = ["get_activity_splits", "get_activity_exercise_sets"];
     check(`T2 ${name}: activity_id es obligatorio`, JSON.stringify(schema?.required), '["activity_id"]');
     check(`T2 ${name}: activity_id igual que en get_activity`, JSON.stringify(schema?.properties.activity_id), JSON.stringify(ref));
   }
+}
+
+// --- T3 should_GET_the_splits_endpoint_for_the_activity_id_and_return_garmins_json_unchanged ---
+// El id de 11 cifras supera int32: no puede salir en notacion exponencial ni perder precision.
+{
+  const SPLITS = { activityId: 12345678901, lapDTOs: [{ lapIndex: 1, distance: 1000 }] };
+  fixture = SPLITS;
+  calls.length = 0;
+  let result: unknown;
+  try { result = await TOOL_MAP.get("get_activity_splits")!.handler(TOKEN, { activity_id: "12345678901" }); }
+  catch (e) { result = `THROW: ${(e as Error).message}`; }
+  const api = apiCalls();
+  check("T3 get_activity_splits: 1 llamada a la API", api.length, 1);
+  check("T3 get_activity_splits: URL de /splits", api[0]?.url, `${ACTIVITY}12345678901/splits`);
+  check("T3 get_activity_splits: metodo GET", api[0]?.method, "GET");
+  check("T3 get_activity_splits: sin cuerpo", api[0]?.body, undefined);
+  check("T3 get_activity_splits: devuelve el JSON de Garmin sin cambios", JSON.stringify(result), JSON.stringify(SPLITS));
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
