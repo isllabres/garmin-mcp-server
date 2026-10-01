@@ -23,9 +23,10 @@ const json = (body: unknown, status = 200) =>
   });
 
 // Solo un objeto puede ser un mensaje JSON-RPC. Lo demas (null, un numero, un
-// texto, un booleano) recibe -32600 con id null: su id no se puede leer.
+// texto, un booleano, una lista) recibe -32600 con id null: su id no se puede leer.
 type RpcMessage = { id?: unknown; method?: unknown; params?: any };
-const isMessage = (m: unknown): m is RpcMessage => typeof m === "object" && m !== null;
+const isMessage = (m: unknown): m is RpcMessage =>
+  typeof m === "object" && m !== null && !Array.isArray(m);
 const invalidRequest = () => rpcErr(null, -32600, "Peticion invalida");
 
 async function handleRpc(req: unknown, oauth1: OAuth1Token): Promise<unknown | null> {

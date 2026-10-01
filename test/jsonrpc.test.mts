@@ -1,6 +1,7 @@
-// Valida que el Worker responde -32600 a los mensajes JSON-RPC que no son objetos,
-// en vez de romper con un HTTP 500 o callar con un 202. Todo se observa a traves
-// de worker.fetch; fetch esta sustituido por una trampa: ningun caso sale a la red.
+// Valida que el Worker responde -32600 a los mensajes JSON-RPC que no son objetos
+// y al lote vacio, en vez de romper con un HTTP 500 o callar con un 202, y que un
+// lote solo de notificaciones sigue recibiendo 202. Todo se observa a traves de
+// worker.fetch; fetch esta sustituido por una trampa: ningun caso sale a la red.
 import { isDeepStrictEqual } from "node:util";
 import worker from "../src/index.ts";
 
@@ -102,6 +103,15 @@ for (const raw of ["5", '"x"', "true", "false"]) {
   const r = await post(JSON.stringify([NOTIF, NOTIF]));
   check("T6 lote solo de notificaciones: HTTP 202", r.status, 202, r.rejected ?? r.text);
   check("T6 lote solo de notificaciones: cuerpo vacio", r.text, "");
+}
+
+// --- T7 should_answer_invalid_request_entry_for_nested_array_item_in_batch ---
+// Una lista dentro de un lote no es un objeto (aunque typeof [] === "object"):
+// recibe su -32600 y no se desempaqueta, asi que no hay respuesta de ping.
+{
+  const r = await post(JSON.stringify([[PING_REQ]]));
+  check("T7 lista dentro del lote: HTTP 200", r.status, 200, r.rejected ?? r.text);
+  check("T7 lista dentro del lote: [-32600 con id null]", isDeepStrictEqual(parse(r.text), [INVALID_REQUEST]), true, r.text);
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
