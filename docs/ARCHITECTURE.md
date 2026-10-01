@@ -22,7 +22,7 @@ The endpoints, user agents and exchange flow come from [garth](https://github.co
 
 - The transport is stateless Streamable HTTP. Each `POST` receives a single `application/json` response. There is no SSE stream and no session ID.
 - The protocol version is `2025-06-18`. The server supports `initialize`, `ping`, `tools/list`, `tools/call` and notifications. A notification receives `202 Accepted` with no body.
-- JSON-RPC batches (arrays) are accepted. Notifications are left out of the reply, and a batch made only of notifications returns `202`.
+- JSON-RPC batches (arrays) are accepted. Notifications are left out of the reply, and a batch made only of notifications returns `202`. Each batch item that is not a JSON object gets its own `-32600` entry, with `id: null`, next to the responses for the valid items. An empty batch `[]` gets a single `-32600` error, not an array.
 - Requests are checked in this order:
 
   | Condition | Response |
@@ -31,6 +31,7 @@ The endpoints, user agents and exchange flow come from [garth](https://github.co
   | Method other than `POST` | HTTP `405` |
   | `GARMIN_OAUTH1` is not a valid `oauth1_token.json` | HTTP `500`, JSON-RPC `-32603` |
   | Malformed JSON body | HTTP `400`, JSON-RPC `-32700` |
+  | Message that is not a JSON object (`null`, a number, a string, a boolean, or an array inside a batch), or an empty batch | HTTP `200`, JSON-RPC `-32600` with `id: null` |
   | Unknown method | JSON-RPC `-32601` |
   | Unknown tool | JSON-RPC `-32602` |
 
@@ -85,6 +86,7 @@ test/oauth1.test.mts        OAuth1 signature test against the canonical vector
 test/exchange-mfa.test.mts  Token exchange test: mfa_token in the form body and the signature
 test/validate.test.mts      Validation rules: format, calendar, sign, range and type
 test/tools.test.mts         Tool requests: invalid arguments never reach fetch; valid ones build today's URLs
+test/jsonrpc.test.mts       JSON-RPC framing: messages that are not objects and the empty batch get -32600
 wrangler.jsonc              Worker config: name, route, observability
 docs/ARCHITECTURE.md        This document
 DESPLIEGUE.md               Deployment guide (Spanish)
@@ -98,6 +100,7 @@ Tests are standalone Node scripts in `test/`, and none of them touches the netwo
 - `test/exchange-mfa.test.mts` runs `connectapi()` against a stubbed `fetch` and checks the token exchange request it captures. When `mfa_token` is set, it must be in the form body and in the signature, but not in the `Authorization` header. Accounts without MFA must send an unchanged request. The test verifies each signature the way Garmin's server would (RFC 5849).
 - `test/validate.test.mts` checks the rules in `src/validate.ts` one by one. They include coercion traps such as `[123]` and `1e21`, and calendar rollover such as `2026-02-30`.
 - `test/tools.test.mts` runs the tool handlers against a recording `fetch` stub. Invalid arguments must fail before any `fetch`, including the OAuth exchange and `displayName()`. Valid arguments must build exactly today's method, URL and body. It also sends a `tools/call` through `src/index.ts` and checks that a validation failure comes back as `isError`.
+- `test/jsonrpc.test.mts` sends raw bodies to the Worker's `fetch` handler. The global `fetch` is replaced by a stub that throws, so nothing reaches the network. A single message that is not an object (`null`, a number, a string, a boolean) and an empty batch must get HTTP `200` with `-32600` and `id: null`. In a batch, each such item, including `null` and a nested array, gets its own `-32600` entry, and a batch made only of notifications still gets `202` with no body.
 
 `npm run typecheck` runs `tsc --noEmit` over `src/` against `@cloudflare/workers-types`.
 

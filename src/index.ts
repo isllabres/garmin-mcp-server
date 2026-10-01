@@ -22,7 +22,15 @@ const json = (body: unknown, status = 200) =>
     status, headers: { "Content-Type": "application/json" },
   });
 
-async function handleRpc(req: any, oauth1: OAuth1Token): Promise<unknown | null> {
+// Solo un objeto puede ser un mensaje JSON-RPC. Lo demas (null, un numero, un
+// texto, un booleano, una lista) recibe -32600 con id null: su id no se puede leer.
+type RpcMessage = { id?: unknown; method?: unknown; params?: any };
+const isMessage = (m: unknown): m is RpcMessage =>
+  typeof m === "object" && m !== null && !Array.isArray(m);
+const invalidRequest = () => rpcErr(null, -32600, "Peticion invalida");
+
+async function handleRpc(req: unknown, oauth1: OAuth1Token): Promise<unknown | null> {
+  if (!isMessage(req)) return invalidRequest();
   const { id, method, params } = req;
 
   switch (method) {
@@ -99,8 +107,9 @@ export default {
     try { body = await request.json(); }
     catch { return json(rpcErr(null, -32700, "JSON invalido"), 400); }
 
-    // El cliente puede mandar un lote.
+    // El cliente puede mandar un lote. Uno vacio recibe un solo error, no una lista.
     if (Array.isArray(body)) {
+      if (body.length === 0) return json(invalidRequest());
       const out = (await Promise.all(body.map((m) => handleRpc(m, oauth1))))
         .filter((r) => r !== null);
       return out.length ? json(out) : new Response(null, { status: 202 });
