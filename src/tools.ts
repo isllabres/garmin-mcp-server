@@ -7,6 +7,7 @@ import { idArg, dateArg, intArg, invalid } from "./validate.ts";
 type Handler = (t: OAuth1Token, a: Record<string, unknown>) => Promise<unknown>;
 
 const DATE = { type: "string", description: "Fecha YYYY-MM-DD" } as const;
+const ACTIVITY_ID = { type: "string" } as const;
 
 export interface Tool {
   name: string;
@@ -98,11 +99,23 @@ export const TOOLS: Tool[] = [
   {
     name: "get_activity",
     description: "Detalle completo de una actividad: potencia, FC, vueltas y series.",
-    inputSchema: obj({ activity_id: { type: "string" } }, ["activity_id"]),
+    inputSchema: obj({ activity_id: ACTIVITY_ID }, ["activity_id"]),
     handler: async (t, a) => {
       const id = idArg(a.activity_id, "activity_id");
       return connectapi(t, `/activity-service/activity/${id}`);
     },
+  },
+  {
+    name: "get_activity_splits",
+    description: "Vueltas de una actividad.",
+    inputSchema: obj({ activity_id: ACTIVITY_ID }, ["activity_id"]),
+    handler: async () => { throw new Error("no implementado"); },
+  },
+  {
+    name: "get_activity_exercise_sets",
+    description: "Series de fuerza de una actividad.",
+    inputSchema: obj({ activity_id: ACTIVITY_ID }, ["activity_id"]),
+    handler: async () => { throw new Error("no implementado"); },
   },
 
   // ---------- entrenos: escritura ----------
