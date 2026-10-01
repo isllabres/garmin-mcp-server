@@ -112,7 +112,7 @@ GARMIN_CONSUMER_SECRET=...
 ```bash
 npm run dev                 # wrangler dev on http://localhost:8787
 npm run typecheck           # tsc --noEmit over src/
-node test/oauth1.test.mts   # OAuth1 signature test
+npm test                    # every test/*.test.mts, each in its own process
 ```
 
 `initialize`, `tools/list` and `ping` work with placeholder secrets; `tools/call` needs a valid Garmin token.

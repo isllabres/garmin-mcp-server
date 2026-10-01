@@ -97,7 +97,7 @@ DESPLIEGUE.md                 Deployment guide (Spanish)
 
 ## Testing
 
-Tests are standalone Node scripts in `test/`, and none of them touches the network. Run each one on its own with `node <file>`: Node treats any extra files as arguments to the first. Relative imports in `src/` carry the `.ts` extension, so the tests can import any module.
+Tests are standalone Node scripts in `test/`, and none of them touches the network. `npm test` runs every `test/*.test.mts` in its own `node` process, prints each file's name before its output, and exits non-zero if any file fails, after running them all. To run a single file, use `node <file>`; don't pass several files to one `node`, which treats the extra files as arguments to the first. Relative imports in `src/` carry the `.ts` extension, so the tests can import any module.
 
 - `test/oauth1.test.mts` checks RFC 3986 percent-encoding and the OAuth1 HMAC-SHA1 signature against the canonical OAuth 1.0a test vector, Twitter's documented example. It builds the signature base string the same way `exchange()` does.
 - `test/exchange-mfa.test.mts` runs `connectapi()` against a stubbed `fetch` and checks the token exchange request it captures. When `mfa_token` is set, it must be in the form body and in the signature, but not in the `Authorization` header. Accounts without MFA must send an unchanged request. The test verifies each signature the way Garmin's server would (RFC 5849).
