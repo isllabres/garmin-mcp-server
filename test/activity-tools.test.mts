@@ -29,7 +29,8 @@ globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.startsWith(ACTIVITY)) return new Response(JSON.stringify(fixture), { status: 200 });
   throw new Error("fetch inesperado: " + url);
 };
-// Llamadas a la API sin el intercambio: tokenCache vive en el modulo y depende del orden de los tests.
+// Llamadas a la API sin el intercambio: que haya intercambio o no depende de si
+// tokenCache, que vive en el modulo, ya tiene token por un test anterior.
 const apiCalls = () => calls.filter((c) => c.url !== EXCHANGE);
 
 // Consumer precargado: nada se pide al bucket S3.
@@ -61,20 +62,26 @@ const TOKEN = { oauth_token: "test-token", oauth_token_secret: "test-token-secre
 }
 
 // --- T3 should_GET_the_splits_endpoint_for_the_activity_id_and_return_garmins_json_unchanged ---
-// El id de 11 cifras supera int32: no puede salir en notacion exponencial ni perder precision.
-{
-  const SPLITS = { activityId: 12345678901, lapDTOs: [{ lapIndex: 1, distance: 1000 }] };
-  fixture = SPLITS;
+// --- T4 should_GET_the_exerciseSets_endpoint_for_the_activity_id_and_return_garmins_json_unchanged ---
+// El id de 11 cifras no cabe en int32: delata una conversion numerica que lo trunque.
+// Las rutas de Garmin distinguen mayusculas: exerciseSets, no exercisesets.
+for (const [test, name, suffix, data] of [
+  ["T3", "get_activity_splits", "splits",
+    { activityId: 12345678901, lapDTOs: [{ lapIndex: 1, distance: 1000 }] }],
+  ["T4", "get_activity_exercise_sets", "exerciseSets",
+    { activityId: 12345678901, exerciseSets: [{ setType: "ACTIVE", repetitionCount: 10, weight: 60000 }] }],
+] as [string, string, string, unknown][]) {
+  fixture = data;
   calls.length = 0;
   let result: unknown;
-  try { result = await TOOL_MAP.get("get_activity_splits")!.handler(TOKEN, { activity_id: "12345678901" }); }
+  try { result = await TOOL_MAP.get(name)!.handler(TOKEN, { activity_id: "12345678901" }); }
   catch (e) { result = `THROW: ${(e as Error).message}`; }
   const api = apiCalls();
-  check("T3 get_activity_splits: 1 llamada a la API", api.length, 1);
-  check("T3 get_activity_splits: URL de /splits", api[0]?.url, `${ACTIVITY}12345678901/splits`);
-  check("T3 get_activity_splits: metodo GET", api[0]?.method, "GET");
-  check("T3 get_activity_splits: sin cuerpo", api[0]?.body, undefined);
-  check("T3 get_activity_splits: devuelve el JSON de Garmin sin cambios", JSON.stringify(result), JSON.stringify(SPLITS));
+  check(`${test} ${name}: 1 llamada a la API`, api.length, 1);
+  check(`${test} ${name}: URL de /${suffix}`, api[0]?.url, `${ACTIVITY}12345678901/${suffix}`);
+  check(`${test} ${name}: metodo GET`, api[0]?.method, "GET");
+  check(`${test} ${name}: una sola llamada y sin cuerpo`, api.length === 1 && api[0].body === undefined, true);
+  check(`${test} ${name}: devuelve el JSON de Garmin sin cambios`, JSON.stringify(result), JSON.stringify(data));
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
