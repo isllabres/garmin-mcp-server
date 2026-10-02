@@ -3,6 +3,7 @@
 // lote solo de notificaciones sigue recibiendo 202. Todo se observa a traves de
 // worker.fetch; fetch esta sustituido por una trampa: ningun caso sale a la red.
 import { isDeepStrictEqual } from "node:util";
+import "./workers-crypto.mts";
 import worker from "../src/index.ts";
 
 // Trampa de red: es un stub de guarda, nunca se comprueba cuantas veces se llamo.

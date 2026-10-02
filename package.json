@@ -1,10 +1,12 @@
 {
   "name": "garmin-mcp-worker",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "s=0; for f in test/*.test.mts; do echo \"# $f\"; node \"$f\" || s=1; done; exit $s"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260924.1",

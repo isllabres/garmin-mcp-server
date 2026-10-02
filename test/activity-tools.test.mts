@@ -3,6 +3,7 @@
 // vueltas ni series.
 import { TOOLS, TOOL_MAP } from "../src/tools.ts";
 import { presetConsumer } from "../src/garmin.ts";
+import "./workers-crypto.mts";
 import worker from "../src/index.ts";
 
 let fail = 0;
