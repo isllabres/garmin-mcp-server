@@ -3,6 +3,7 @@
 
 import { TOOLS, TOOL_MAP } from "./tools.ts";
 import { presetConsumer, type OAuth1Token } from "./garmin.ts";
+import { isAuthorized } from "./auth.ts";
 
 const PROTOCOL = "2025-06-18";
 
@@ -83,8 +84,7 @@ export default {
     // Este servidor da acceso total a la cuenta de Garmin. El Bearer lo inyecta
     // el MCP portal desde el servidor, no el cliente (los clientes de Claude no
     // reenvian cabeceras: ver cloudflare/mcp#95).
-    const auth = request.headers.get("Authorization");
-    if (!env.UPSTREAM_TOKEN || auth !== `Bearer ${env.UPSTREAM_TOKEN}`) {
+    if (!isAuthorized(request.headers.get("Authorization"), env.UPSTREAM_TOKEN)) {
       return new Response("Unauthorized", { status: 401 });
     }
 

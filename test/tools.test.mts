@@ -3,6 +3,7 @@
 // fetch esta sustituido por un stub que graba cada llamada: nunca sale a la red.
 import { TOOL_MAP } from "../src/tools.ts";
 import { presetConsumer } from "../src/garmin.ts";
+import "./workers-crypto.mts";
 import worker from "../src/index.ts";
 
 let fail = 0;
