@@ -35,6 +35,7 @@ The endpoints, user agents and exchange flow come from [garth](https://github.co
   | Unknown method | JSON-RPC `-32601` |
   | Unknown tool | JSON-RPC `-32602` |
 
+- The Bearer token is compared in constant time by `isAuthorized` in `src/auth.ts`, with `crypto.subtle.timingSafeEqual`. A missing or empty `UPSTREAM_TOKEN` rejects every request, and a token of the wrong length gets `401` without an exception.
 - A tool failure, such as a Garmin error or an expired token, is returned as a result with `isError: true`, not as a protocol error. The model sees the message and can react to it.
 
 ## Garmin authentication
@@ -84,12 +85,15 @@ src/index.ts                  Worker entry point: Bearer check, JSON-RPC/MCP dis
 src/garmin.ts                 Garmin client: OAuth1 signing, OAuth2 exchange, caching, connectapi()
 src/tools.ts                  Tool definitions: name, description, JSON Schema, handler
 src/validate.ts               Argument validation: idArg, dateArg, intArg
+src/auth.ts                   Bearer check: isAuthorized, constant-time comparison
 test/oauth1.test.mts          OAuth1 signature test against the canonical vector
 test/exchange-mfa.test.mts    Token exchange test: mfa_token in the form body and the signature
 test/validate.test.mts        Validation rules: format, calendar, sign, range and type
 test/tools.test.mts           Tool requests: invalid arguments never reach fetch; valid ones build today's URLs
 test/jsonrpc.test.mts         JSON-RPC framing: messages that are not objects and the empty batch get -32600
 test/activity-tools.test.mts  Activity detail tools: registration, schema, endpoints, descriptions, invalid ids
+test/auth.test.mts            Bearer check: correct token, comparator decides, wrong length, missing header or secret
+test/workers-crypto.mts       Test shim: node:crypto's timingSafeEqual on crypto.subtle, for tests that call worker.fetch
 wrangler.jsonc                Worker config: name, route, observability
 docs/ARCHITECTURE.md          This document
 DESPLIEGUE.md                 Deployment guide (Spanish)
@@ -97,7 +101,7 @@ DESPLIEGUE.md                 Deployment guide (Spanish)
 
 ## Testing
 
-Tests are standalone Node scripts in `test/`, and none of them touches the network. `npm test` runs every `test/*.test.mts` in its own `node` process, prints each file's name before its output, and exits non-zero if any file fails, after running them all. To run a single file, use `node <file>`; don't pass several files to one `node`, which treats the extra files as arguments to the first. Relative imports in `src/` carry the `.ts` extension, so the tests can import any module.
+Tests are standalone Node scripts in `test/`, and none of them touches the network. `npm test` runs every `test/*.test.mts` in its own `node` process, prints each file's name before its output, and exits non-zero if any file fails, after running them all. To run a single file, use `node <file>`; don't pass several files to one `node`, which treats the extra files as arguments to the first. Relative imports in `src/` carry the `.ts` extension, so the tests can import any module. A test that calls `worker.fetch` must import `./workers-crypto.mts` before `src/index.ts`: Node has no `crypto.subtle.timingSafeEqual`, and that shim installs `node:crypto`'s version only when it is missing.
 
 - `test/oauth1.test.mts` checks RFC 3986 percent-encoding and the OAuth1 HMAC-SHA1 signature against the canonical OAuth 1.0a test vector, Twitter's documented example. It builds the signature base string the same way `exchange()` does.
 - `test/exchange-mfa.test.mts` runs `connectapi()` against a stubbed `fetch` and checks the token exchange request it captures. When `mfa_token` is set, it must be in the form body and in the signature, but not in the `Authorization` header. Accounts without MFA must send an unchanged request. The test verifies each signature the way Garmin's server would (RFC 5849).
@@ -105,6 +109,7 @@ Tests are standalone Node scripts in `test/`, and none of them touches the netwo
 - `test/tools.test.mts` runs the tool handlers against a recording `fetch` stub. Invalid arguments must fail before any `fetch`, including the OAuth exchange and `displayName()`. Valid arguments must build exactly today's method, URL and body. It also sends a `tools/call` through `src/index.ts` and checks that a validation failure comes back as `isError`.
 - `test/jsonrpc.test.mts` sends raw bodies to the Worker's `fetch` handler. The global `fetch` is replaced by a stub that throws, so nothing reaches the network. A single message that is not an object (`null`, a number, a string, a boolean) and an empty batch must get HTTP `200` with `-32600` and `id: null`. In a batch, each such item, including `null` and a nested array, gets its own `-32600` entry, and a batch made only of notifications still gets `202` with no body.
 - `test/activity-tools.test.mts` covers `get_activity_splits` and `get_activity_exercise_sets`. Both must be registered with the same required `activity_id` schema as `get_activity`, and send exactly one `GET` to `/splits` or `/exerciseSets`, returning Garmin's JSON unchanged. `get_activity`'s description must not promise laps or sets and must name both tools, and the three descriptions must have no diacritics. Through `tools/call`, an invalid `activity_id` must give the same `isError` text as `get_activity`, with no `fetch` at all.
+- `test/auth.test.mts` checks `isAuthorized` with `node:crypto`'s `timingSafeEqual` injected as the comparator. The correct token is accepted; a stub comparator decides the verdict, so a return to `===` fails; a wrong token of any length, including a multibyte one, is rejected without throwing; and a missing header or a missing or empty `UPSTREAM_TOKEN` is rejected. The Workers primitive itself is checked only by `npm run typecheck` and a manual `wrangler dev` run.
 
 `npm run typecheck` runs `tsc --noEmit` over `src/` against `@cloudflare/workers-types`.
 
