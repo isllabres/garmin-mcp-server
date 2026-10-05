@@ -6,6 +6,10 @@
 import { parseTokens, TOKENS_KEY } from "./tokens.ts";
 
 const DIAUTH = "https://diauth.garmin.com/di-oauth2-service/oauth/token";
+// El cron corre cada 6 h y el token de acceso dura ~25 h: refrescando por debajo de
+// 12 h se refresca cada ~18 h (una escritura de KV) con unas 6,9 h de margen, asi que
+// el token sobrevive a una pasada fallida; con dos seguidas caduca hasta la siguiente.
+const REFRESH_BELOW_SECONDS = 12 * 3600;
 const NATIVE: Record<string, string> = {
   "User-Agent": "GCM-Android-5.23",
   "X-Garmin-User-Agent":
@@ -19,7 +23,8 @@ const NATIVE: Record<string, string> = {
 };
 
 export async function refreshSession(kv: KVNamespace): Promise<void> {
-  const { tokens } = parseTokens(await kv.get(TOKENS_KEY));
+  const { tokens, exp } = parseTokens(await kv.get(TOKENS_KEY));
+  if (exp - Math.floor(Date.now() / 1000) >= REFRESH_BELOW_SECONDS) return;
   const res = await fetch(DIAUTH, {
     method: "POST",
     headers: {

@@ -115,6 +115,50 @@ for (const [label, extra] of [
   check(`T9 ${label}: di_token nuevo`, stored.di_token, NEW_AT);
   check(`T9 ${label}: conserva el refresh token guardado`, stored.di_refresh_token, OLD_RT);
   check(`T9 ${label}: mismo di_client_id`, stored.di_client_id, CLIENT);
+  check(`T9 ${label}: exactamente los tres campos`, JSON.stringify(Object.keys(stored).sort()), '["di_client_id","di_refresh_token","di_token"]');
+}
+
+// --- T10 should_refresh_only_when_the_access_token_has_less_than_12_hours_left ---
+// Margenes de 1 h a cada lado de 12 h: el resultado no depende de si el reloj es
+// Date.now() o controller.scheduledTime. La fila caducada es la recuperacion tras
+// pasadas fallidas: las peticiones no refrescan (T3), asi que debe hacerlo el cron.
+for (const [label, exp, refreshes] of [
+  ["13 h", nowSec() + 13 * 3600, false],
+  ["11 h", nowSec() + 11 * 3600, true],
+  ["caducado hace 1 h", nowSec() - 3600, true],
+] as [string, number, boolean][]) {
+  reset();
+  const NEW_AT = jwt(nowSec() + 89604);
+  diauth = ok200({ access_token: NEW_AT, refresh_token: NEW_RT, expires_in: 89604 });
+  const before = tokensJson(jwt(exp));
+  const kv = memoryKV({ tokens: before }, { events });
+  await runCron(kv);
+  const fetches = calls.filter((c) => c.url === DIAUTH).length;
+  if (refreshes) {
+    check(`T10 ${label}: refresca una vez`, fetches, 1);
+    check(`T10 ${label}: guarda el di_token nuevo`, JSON.parse(kv.raw("tokens") ?? "{}").di_token, NEW_AT);
+  } else {
+    check(`T10 ${label}: ninguna llamada de red`, calls.length, 0);
+    check(`T10 ${label}: no escribe en KV`, events.filter((e) => e.startsWith("kv.put")).length, 0);
+    check(`T10 ${label}: KV sin cambios`, kv.raw("tokens"), before);
+  }
+}
+
+// --- T11 should_make_no_network_call_when_kv_has_no_or_malformed_tokens ---
+// Las filas 3 y 4 caen dentro de la ventana de 12 h: solo la validez las para.
+for (const [label, stored] of [
+  ["sin clave tokens", undefined],
+  ["no es JSON", "no-es-json-SECRETO"],
+  ["falta di_refresh_token", tokensJson(jwt(nowSec() + 3600), { di_refresh_token: undefined })],
+  ["di_client_id vacio", tokensJson(jwt(nowSec() + 3600), { di_client_id: "" })],
+] as [string, string | undefined][]) {
+  reset();
+  diauth = ok200({ access_token: jwt(nowSec() + 89604), refresh_token: NEW_RT });
+  const kv = memoryKV(stored === undefined ? {} : { tokens: stored }, { events });
+  await runCron(kv);
+  check(`T11 ${label}: 0 llamadas de red`, calls.length, 0);
+  check(`T11 ${label}: no escribe en KV`, events.filter((e) => e.startsWith("kv.put")).length, 0);
+  check(`T11 ${label}: KV sin cambios`, kv.raw("tokens"), stored ?? null);
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
