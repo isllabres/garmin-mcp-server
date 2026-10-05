@@ -30,7 +30,17 @@ const isMessage = (m: unknown): m is RpcMessage =>
   typeof m === "object" && m !== null && !Array.isArray(m);
 const invalidRequest = () => rpcErr(null, -32600, "Peticion invalida");
 
-async function handleRpc(req: unknown, oauth1: OAuth1Token): Promise<unknown | null> {
+// Solo tools/call necesita el token: los metodos de protocolo funcionan sin el.
+// El error no incluye el valor: JSON.parse lo citaria y saldria en el resultado.
+function readOAuth1(raw: string): OAuth1Token {
+  try {
+    const t = JSON.parse(raw) as OAuth1Token;
+    if (t.oauth_token && t.oauth_token_secret) return t;
+  } catch { /* cae al error de abajo */ }
+  throw new Error("GARMIN_OAUTH1 no es un oauth1_token.json valido");
+}
+
+async function handleRpc(req: unknown, env: Env): Promise<unknown | null> {
   if (!isMessage(req)) return invalidRequest();
   const { id, method, params } = req;
 
@@ -59,7 +69,7 @@ async function handleRpc(req: unknown, oauth1: OAuth1Token): Promise<unknown | n
       const tool = TOOL_MAP.get(params?.name);
       if (!tool) return rpcErr(id, -32602, `Herramienta desconocida: ${params?.name}`);
       try {
-        const out = await tool.handler(oauth1, params.arguments ?? {});
+        const out = await tool.handler(readOAuth1(env.GARMIN_OAUTH1), params.arguments ?? {});
         return rpc(id, {
           content: [{ type: "text", text: JSON.stringify(out, null, 2) }],
         });
@@ -94,15 +104,6 @@ export default {
 
     presetConsumer(env.GARMIN_CONSUMER_KEY, env.GARMIN_CONSUMER_SECRET);
 
-    let oauth1: OAuth1Token;
-    try {
-      oauth1 = JSON.parse(env.GARMIN_OAUTH1);
-      if (!oauth1.oauth_token || !oauth1.oauth_token_secret) throw new Error();
-    } catch {
-      return json(rpcErr(null, -32603,
-        "GARMIN_OAUTH1 no es un oauth1_token.json valido"), 500);
-    }
-
     let body: any;
     try { body = await request.json(); }
     catch { return json(rpcErr(null, -32700, "JSON invalido"), 400); }
@@ -110,12 +111,12 @@ export default {
     // El cliente puede mandar un lote. Uno vacio recibe un solo error, no una lista.
     if (Array.isArray(body)) {
       if (body.length === 0) return json(invalidRequest());
-      const out = (await Promise.all(body.map((m) => handleRpc(m, oauth1))))
+      const out = (await Promise.all(body.map((m) => handleRpc(m, env))))
         .filter((r) => r !== null);
       return out.length ? json(out) : new Response(null, { status: 202 });
     }
 
-    const res = await handleRpc(body, oauth1);
+    const res = await handleRpc(body, env);
     return res === null ? new Response(null, { status: 202 }) : json(res);
   },
 };
