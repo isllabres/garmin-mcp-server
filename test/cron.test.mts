@@ -22,7 +22,9 @@ globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const req = new Request(input, init);
   calls.push({ method: req.method, url: req.url, headers: req.headers, body: await req.text() });
   events.push(`fetch ${req.method} ${req.url}`);
-  if (req.url === DIAUTH) return diauth();
+  // Contesta en otra vuelta del bucle: si scheduled no esperase su trabajo, el
+  // kv.put aun no habria ocurrido al acabar el Act y T8 lo delataria.
+  if (req.url === DIAUTH) { await new Promise((r) => setTimeout(r, 0)); return diauth(); }
   throw new Error("fetch inesperado: " + req.url);
 };
 const ok200 = (body: unknown) => () => new Response(JSON.stringify(body), { status: 200 });
@@ -74,6 +76,45 @@ for (const [id, basic] of [
   check(`T7 ${id}: Accept`, c?.headers.get("Accept"), "application/json");
   check(`T7 ${id}: Cache-Control`, c?.headers.get("Cache-Control"), "no-cache");
   for (const [h, v] of NATIVE) check(`T7 ${id}: ${h}`, c?.headers.get(h), v);
+}
+
+// --- T8 should_store_the_rotated_tokens_in_kv_immediately_after_a_successful_refresh ---
+// El refresh token rotado solo existe en esa respuesta: perderlo acaba con la sesion.
+// Sin campos extra, para que un garmin_tokens.json recien hecho y lo que escribe el
+// cron sean intercambiables.
+{
+  reset();
+  const NEW_AT = jwt(nowSec() + 89604);
+  diauth = ok200({ access_token: NEW_AT, refresh_token: NEW_RT, expires_in: 89604, refresh_token_expires_in: 2591999 });
+  const kv = memoryKV({ tokens: tokensJson(jwt(nowSec() + 11 * 3600)) }, { events });
+  await runCron(kv);
+  const stored = JSON.parse(kv.raw("tokens") ?? "{}");
+  check("T8 guarda exactamente los tres campos", JSON.stringify(Object.keys(stored).sort()), '["di_client_id","di_refresh_token","di_token"]');
+  check("T8 di_token nuevo", stored.di_token, NEW_AT);
+  check("T8 di_refresh_token rotado", stored.di_refresh_token, NEW_RT);
+  check("T8 mismo di_client_id", stored.di_client_id, CLIENT);
+  check("T8 un solo kv.put", events.filter((e) => e.startsWith("kv.put")).length, 1);
+  const i = events.indexOf(`fetch POST ${DIAUTH}`);
+  check("T8 lo siguiente tras el refresco es el kv.put", events[i + 1], "kv.put tokens");
+  check("T8 una sola llamada de red", events.filter((e) => e.startsWith("fetch ")).length, 1);
+}
+
+// --- T9 should_keep_the_stored_refresh_token_when_the_response_does_not_rotate_it ---
+// JSON.stringify quita undefined: una escritura ingenua perderia di_refresh_token, la
+// siguiente pasada veria una sesion malformada y la sesion moriria sin ningun error.
+for (const [label, extra] of [
+  ["(a) sin refresh_token", {}],
+  ["(b) refresh_token null", { refresh_token: null }],
+] as [string, Record<string, unknown>][]) {
+  reset();
+  const NEW_AT = jwt(nowSec() + 89604);
+  diauth = ok200({ access_token: NEW_AT, expires_in: 89604, ...extra });
+  const kv = memoryKV({ tokens: tokensJson(jwt(nowSec() + 11 * 3600)) }, { events });
+  await runCron(kv);
+  const stored = JSON.parse(kv.raw("tokens") ?? "{}");
+  check(`T9 ${label}: di_token nuevo`, stored.di_token, NEW_AT);
+  check(`T9 ${label}: conserva el refresh token guardado`, stored.di_refresh_token, OLD_RT);
+  check(`T9 ${label}: mismo di_client_id`, stored.di_client_id, CLIENT);
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");

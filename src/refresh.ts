@@ -3,7 +3,7 @@
 // spike del 2026-10-05 (python-garminconnect 0.3.17, _refresh_di_token); no
 // cambies estas cabeceras de memoria.
 
-import { parseTokens } from "./tokens.ts";
+import { parseTokens, TOKENS_KEY } from "./tokens.ts";
 
 const DIAUTH = "https://diauth.garmin.com/di-oauth2-service/oauth/token";
 const NATIVE: Record<string, string> = {
@@ -19,8 +19,8 @@ const NATIVE: Record<string, string> = {
 };
 
 export async function refreshSession(kv: KVNamespace): Promise<void> {
-  const { tokens } = parseTokens(await kv.get("tokens"));
-  await fetch(DIAUTH, {
+  const { tokens } = parseTokens(await kv.get(TOKENS_KEY));
+  const res = await fetch(DIAUTH, {
     method: "POST",
     headers: {
       ...NATIVE,
@@ -34,6 +34,14 @@ export async function refreshSession(kv: KVNamespace): Promise<void> {
       grant_type: "refresh_token",
       client_id: tokens.di_client_id,
       refresh_token: tokens.di_refresh_token,
-    }).toString(),
+    }),
   });
+  const data = (await res.json()) as { access_token: string; refresh_token?: string | null };
+  // Antes que nada: el refresh token anterior puede haber dejado de valer.
+  await kv.put(TOKENS_KEY, JSON.stringify({
+    di_token: data.access_token,
+    // Si Garmin no lo rota, se conserva el guardado.
+    di_refresh_token: data.refresh_token ?? tokens.di_refresh_token,
+    di_client_id: tokens.di_client_id,
+  }));
 }

@@ -7,6 +7,9 @@ export interface Tokens {
   di_client_id: string;
 }
 
+/** Clave de KV con la sesion: la leen las peticiones y la escribe solo el cron. */
+export const TOKENS_KEY = "tokens";
+
 export const NO_SESSION = "sin sesion de Garmin: ejecuta garmin-mcp-auth y carga el token en KV";
 export const EXPIRED =
   "sesion de Garmin caducada: el refresco programado esta fallando; revisa los logs o ejecuta garmin-mcp-auth";
