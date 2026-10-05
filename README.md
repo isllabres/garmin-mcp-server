@@ -67,14 +67,14 @@ Dates are `YYYY-MM-DD`. Tools return Garmin's JSON unchanged.
    | `UPSTREAM_TOKEN` | Yes | Bearer token that clients must send |
    | `GARMIN_CONSUMER_KEY`, `GARMIN_CONSUMER_SECRET` | Recommended | OAuth1 consumer credentials |
 
-4. **Deploy.** In `wrangler.jsonc`, replace the placeholder domain `garmin-mcp.TUDOMINIO.com` with your own. Then run:
+4. **Deploy.** `wrangler.jsonc` serves the Worker at `https://garmin-mcp-server.<your-subdomain>.workers.dev`. Run:
 
    ```bash
    npm run typecheck
    npm run deploy   # wrangler deploy
    ```
 
-   Without a domain on Cloudflare, set `"workers_dev": true` and remove `routes` to serve the Worker at `https://garmin-mcp.<your-subdomain>.workers.dev`.
+   To serve it on a domain you have on Cloudflare instead, set `"workers_dev": false` and add `"routes": [{ "pattern": "garmin-mcp.example.com", "custom_domain": true }]`. If the repo is connected to Workers Builds, every push to `main` deploys, and the Worker name in the dashboard must match `name` in `wrangler.jsonc`.
 
 5. **Connect a client.**
 
