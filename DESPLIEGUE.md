@@ -52,7 +52,7 @@ npx wrangler secret put GARMIN_CONSUMER_SECRET
 ```bash
 npm install
 npm run typecheck
-npx wrangler deploy      # pon tu dominio en wrangler.jsonc antes
+npx wrangler deploy      # sirve en garmin-mcp-server.<tu-subdominio>.workers.dev
 ```
 
 ## 5. Portal MCP
@@ -68,9 +68,9 @@ Política de Access: **solo tu correo**.
 ## Prueba
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" https://garmin-mcp.TUDOMINIO.com   # 401
+curl -s -o /dev/null -w "%{http_code}\n" https://garmin-mcp-server.<tu-subdominio>.workers.dev   # 401
 
-curl -s -X POST https://garmin-mcp.TUDOMINIO.com \
+curl -s -X POST https://garmin-mcp-server.<tu-subdominio>.workers.dev \
   -H "Authorization: Bearer <UPSTREAM_TOKEN>" -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
