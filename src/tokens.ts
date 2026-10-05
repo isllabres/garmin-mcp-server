@@ -8,6 +8,8 @@ export interface Tokens {
 }
 
 export const NO_SESSION = "sin sesion de Garmin: ejecuta garmin-mcp-auth y carga el token en KV";
+export const EXPIRED =
+  "sesion de Garmin caducada: el refresco programado esta fallando; revisa los logs o ejecuta garmin-mcp-auth";
 
 /** Claim exp (epoch segundos) del JWT, decodificando base64url sin Buffer; null si no lo hay. */
 function jwtExp(token: string): number | null {
@@ -16,7 +18,8 @@ function jwtExp(token: string): number | null {
   try {
     const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
     const payload = JSON.parse(atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4)));
-    return typeof payload?.exp === "number" ? payload.exp : null;
+    // Number.isFinite: un exp de 1e999 seria Infinity y el token no caducaria nunca.
+    return Number.isFinite(payload?.exp) ? payload.exp : null;
   } catch {
     return null;
   }

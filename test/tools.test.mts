@@ -134,10 +134,13 @@ for (const [tool, args, argName] of [
   }
 }
 
-// --- 12. tools/call devuelve el fallo de validacion como isError, no como error JSON-RPC, sin fetch ---
+// --- 12 (T6) should_reject_invalid_arguments_before_reading_kv_or_calling_fetch ---
+// Por tools/call y con KV VACIO: si la sesion se leyera antes de validar, el
+// usuario veria "sin sesion" en vez del error de su argumento.
 {
   calls.length = 0;
-  const env = { GARMIN_KV: memoryKV(), UPSTREAM_TOKEN: "up" };
+  const events: string[] = [];
+  const env = { GARMIN_KV: memoryKV({}, { events }), UPSTREAM_TOKEN: "up" };
   const res = await worker.fetch(new Request("https://worker.test/", {
     method: "POST",
     headers: { Authorization: "Bearer up" },
@@ -148,12 +151,14 @@ for (const [tool, args, argName] of [
   }), env as never);
   const body = await res.json() as { result?: { isError?: boolean; content?: { text: string }[] }; error?: unknown };
   const text = body.result?.content?.[0]?.text ?? "";
-  check("tools/call con workout_id invalido: HTTP 200", res.status, 200);
-  check("tools/call con workout_id invalido: result.isError", body.result?.isError, true);
-  check("tools/call con workout_id invalido: texto 'Error: ' que nombra workout_id",
-    text.startsWith("Error: ") && text.includes("workout_id"), true);
-  check("tools/call con workout_id invalido: sin error JSON-RPC", "error" in body, false);
-  check("tools/call con workout_id invalido: 0 llamadas a fetch", calls.length, 0);
+  check("T6 workout_id invalido con KV vacio: HTTP 200", res.status, 200);
+  check("T6 workout_id invalido con KV vacio: sin error JSON-RPC", "error" in body, false);
+  check("T6 workout_id invalido con KV vacio: result.isError", body.result?.isError, true);
+  check("T6 workout_id invalido con KV vacio: 'Error: ' que nombra workout_id e invalido",
+    text.startsWith("Error: ") && text.includes("workout_id") && text.includes("invalido"), true);
+  check("T6 workout_id invalido con KV vacio: no es el error de sin sesion", text.includes("sin sesion"), false);
+  check("T6 workout_id invalido con KV vacio: 0 llamadas a fetch", calls.length, 0);
+  check("T6 workout_id invalido con KV vacio: 0 lecturas de KV", events.filter((e) => e.startsWith("kv.get")).length, 0);
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");

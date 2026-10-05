@@ -6,7 +6,7 @@
 // Aqui solo se lee de KV el token de acceso y se llama a connectapi.garmin.com con
 // Bearer. User-Agent sacado de garth 0.8.0; NK, de python-garminconnect 0.3.2.
 
-import { parseTokens } from "./tokens.ts";
+import { parseTokens, EXPIRED } from "./tokens.ts";
 
 const API = "https://connectapi.garmin.com";
 const UA = "GCM-iOS-5.22.1.4";            // garth/http.py — Garmin rechaza otros
@@ -21,7 +21,9 @@ export async function connectapi(
   path: string,
   init: { method?: string; body?: unknown } = {},
 ): Promise<unknown> {
-  const { tokens } = parseTokens(await kv.get("tokens"));
+  const { tokens, exp } = parseTokens(await kv.get("tokens"));
+  // Solo el cron refresca. 60 s de margen para no usar un token que caduca a mitad de vuelo.
+  if (exp - 60 <= Math.floor(Date.now() / 1000)) throw new Error(EXPIRED);
   const headers: Record<string, string> = {
     Authorization: `Bearer ${tokens.di_token}`,
     "User-Agent": UA,

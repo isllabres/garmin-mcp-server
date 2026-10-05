@@ -148,5 +148,23 @@ for (const [label, stored] of [
   check(`T4 ${label}: ningun log con un secreto`, lines.some((l) => l.includes(MARK)), false);
 }
 
+// --- T5 should_return_the_expired_session_isError_without_calling_garmin ---
+// La caducidad sale del claim exp del JWT, nunca de un campo guardado.
+{
+  events = [];
+  calls.length = 0;
+  const env = { GARMIN_KV: memoryKV({ tokens: tokensJson(jwt(nowSec() - 3600)) }, { events }), UPSTREAM_TOKEN: "test-upstream" };
+  let r: Awaited<ReturnType<typeof rpc>> | undefined;
+  const { lines } = await captureLogs(async () => {
+    r = await rpc(env, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_user_settings", arguments: {} } });
+  });
+  check("T5 token caducado: isError", r?.body.result?.isError, true);
+  check("T5 token caducado: texto exacto de sesion caducada", r?.body.result?.content?.[0]?.text,
+    "Error: sesion de Garmin caducada: el refresco programado esta fallando; revisa los logs o ejecuta garmin-mcp-auth");
+  check("T5 token caducado: 0 llamadas a fetch", calls.length, 0);
+  check("T5 token caducado: ninguna escritura en KV", events.filter((e) => e.startsWith("kv.put")).length, 0);
+  check("T5 token caducado: ningun log con un secreto", lines.some((l) => l.includes(MARK)), false);
+}
+
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
 process.exit(fail ? 1 : 0);
