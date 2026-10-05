@@ -23,11 +23,16 @@ refrescar el token, y GETs con Bearer. De ahí que quepa en 400 líneas.
 ## 1. Saca el token de Garmin (una vez, en local)
 
 ```bash
-uvx --python 3.12 --from git+https://github.com/Taxuspt/garmin_mcp garmin-mcp-auth
-cat ~/.garminconnect/oauth1_token.json
+uvx --from "git+https://github.com/isllabres/garmin-mcp-server#subdirectory=auth" garmin-mcp-auth
 ```
 
-Ese JSON entero es el secreto. Dura ~1 año.
+Pide email, contraseña y código MFA, entra con garth 0.8.0 y guarda
+`~/.garminconnect/oauth1_token.json`, legible solo por ti. Ese JSON entero es el
+secreto. Dura ~1 año.
+
+> garth ya no se mantiene: Garmin cambió su login en marzo de 2026 y el login
+> OAuth1 de garth funciona a ratos desde entonces. Si falla con `401` o `429`,
+> espera antes de reintentar: cada intento alarga el bloqueo.
 
 ## 2. Fija el consumer (recomendado)
 

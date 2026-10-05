@@ -11,7 +11,7 @@ Claude ──► MCP portal (Cloudflare Access + your IdP) ──► Worker ─�
 
 The server is a single Cloudflare Worker sized for the free tier. It needs no container, Docker, Durable Objects or paid bindings, and it has no runtime dependencies.
 
-The Garmin login (SSO, MFA and a WebView user agent) is deliberately kept out of the Worker. It runs once on the user's machine and produces a long-lived OAuth1 token, which the Worker stores as a secret. At runtime the Worker performs only two operations:
+The Garmin login (SSO, MFA and a WebView user agent) is deliberately kept out of the Worker. It runs once on the user's machine, with `garmin-mcp-auth` in `auth/` (garth 0.8.0), and produces a long-lived OAuth1 token, which the Worker stores as a secret. At runtime the Worker performs only two operations:
 
 1. A signed OAuth1 (HMAC-SHA1) `POST` that exchanges the OAuth1 token, valid for about a year, for an OAuth2 access token, valid for about an hour.
 2. `GET`, `POST` and `DELETE` requests to `connectapi.garmin.com` with that Bearer token.
@@ -94,6 +94,7 @@ test/jsonrpc.test.mts         JSON-RPC framing: messages that are not objects an
 test/activity-tools.test.mts  Activity detail tools: registration, schema, endpoints, descriptions, invalid ids
 test/auth.test.mts            Bearer check: correct token, comparator decides, wrong length, missing header or secret
 test/workers-crypto.mts       Test shim: node:crypto's timingSafeEqual on crypto.subtle, for tests that call worker.fetch
+auth/                         garmin-mcp-auth: one-time Garmin login with garth, writes oauth1_token.json
 wrangler.jsonc                Worker config: name, route, observability
 docs/ARCHITECTURE.md          This document
 DESPLIEGUE.md                 Deployment guide (Spanish)

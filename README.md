@@ -37,12 +37,13 @@ Dates are `YYYY-MM-DD`. Tools return Garmin's JSON unchanged.
 
 ## Setup
 
-1. **Generate the Garmin token** once, on your machine. It is valid for about a year.
+1. **Generate the Garmin token** once, on your machine. It is valid for about a year. `garmin-mcp-auth` (in `auth/`) asks for your email, password and MFA code, logs in with [garth](https://github.com/matin/garth) 0.8.0, and saves `~/.garminconnect/oauth1_token.json`, readable only by you.
 
    ```bash
-   uvx --python 3.12 --from git+https://github.com/Taxuspt/garmin_mcp garmin-mcp-auth
-   cat ~/.garminconnect/oauth1_token.json
+   uvx --from "git+https://github.com/isllabres/garmin-mcp-server#subdirectory=auth" garmin-mcp-auth
    ```
+
+   garth is no longer maintained: Garmin changed its login in March 2026, and garth's OAuth1 login has worked only intermittently since. If the login fails with `401` or `429`, wait before retrying, since repeated attempts extend the block.
 
 2. **Fetch the OAuth consumer credentials** (recommended). Otherwise, the Worker downloads them from a third-party S3 bucket on each cold start.
 
