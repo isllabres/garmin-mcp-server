@@ -3,8 +3,9 @@
 // umbral de 12 h, y que ningun fallo toca KV ni escribe un token en los logs.
 // Solo se llama a worker.scheduled; fetch esta sustituido por un stub que graba
 // cada llamada y lanza ante cualquier URL que no sea diauth.
+import { format } from "node:util";
 import worker from "../src/index.ts";
-import { memoryKV, jwt, nowSec, tokensJson, captureLogs, CLIENT, OLD_RT, NEW_RT } from "./fakes.mts";
+import { memoryKV, jwt, nowSec, tokensJson, captureLogs, CLIENT, OLD_RT, NEW_RT, MARK } from "./fakes.mts";
 
 let fail = 0;
 const check = (name: string, got: unknown, want: unknown) => {
@@ -30,15 +31,22 @@ globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
 const ok200 = (body: unknown) => () => new Response(JSON.stringify(body), { status: 200 });
 
 // Ejecuta el cron como lo haria Workers y espera tambien lo que pase por ctx.waitUntil.
+// Devuelve ademas los motivos de rechazo de waitUntil: Workers los escribe en sus
+// logs, igual que un error que salga de scheduled (threw).
 async function runCron(kv: ReturnType<typeof memoryKV>) {
   const pending: Promise<unknown>[] = [];
+  const rejections: unknown[] = [];
   const controller = { scheduledTime: Date.now(), cron: "0 */6 * * *", noRetry() {} };
   const ctx = { waitUntil(p: Promise<unknown>) { pending.push(p); }, passThroughOnException() {} };
   const env = { GARMIN_KV: kv, UPSTREAM_TOKEN: "test-upstream" };
-  return captureLogs(async () => {
-    await (worker as any).scheduled(controller, env, ctx);
-    await Promise.allSettled(pending);
+  const out = await captureLogs(async () => {
+    try {
+      await (worker as any).scheduled(controller, env, ctx);
+    } finally {
+      for (const r of await Promise.allSettled(pending)) if (r.status === "rejected") rejections.push(r.reason);
+    }
   });
+  return { ...out, rejections };
 }
 const reset = () => { events = []; calls.length = 0; };
 
@@ -215,6 +223,36 @@ for (const [label, make, status] of [
   check("T14 log que pide volver a entrar", lines.some((l) => l.includes("garmin-mcp-auth")), true);
   check("T14 no se da por rechazado", lines.some((l) => l.includes("refresco rechazado")), false);
   check("T14 KV sin cambios", kv.raw("tokens"), before);
+}
+
+// --- T15 should_never_write_a_token_to_the_logs ---
+// MARK esta en OLD_RT, NEW_RT y en la firma de todo JWT. Se revisan las lineas de
+// consola, el error que salga de scheduled y los rechazos de waitUntil (Workers los
+// escribe en sus logs), con mensaje y pila. Loguear o lanzar un token, el cuerpo del
+// formulario, el valor guardado, un cuerpo de respuesta o el mensaje de un JSON.parse
+// que lo cite haria fallar esta prueba.
+const noDiauth = () => { throw new Error("la fila (f) no debe llegar a diauth"); };
+for (const [label, make, stored, failPut] of [
+  ["(a) 200 rotado", ok200({ access_token: jwt(nowSec() + 89604), refresh_token: NEW_RT }), undefined, false],
+  ["(b) 400 que repite el token", () => new Response(JSON.stringify({ error: "invalid_grant", refresh_token: OLD_RT }), { status: 400 }), undefined, false],
+  ["(c) 503 que repite el token", () => new Response("upstream error " + OLD_RT, { status: 503 }), undefined, false],
+  ["(d) error de red", () => { throw new TypeError("fetch failed"); }, undefined, false],
+  ["(e) 200 y el put falla", ok200({ access_token: jwt(nowSec() + 89604), refresh_token: NEW_RT }), undefined, true],
+  // Se para al leer KV, antes de cualquier fetch.
+  ["(f) KV con algo que no es JSON", noDiauth, "no-es-json-SECRETO", false],
+  // Cuerpo corto a proposito: el SyntaxError de res.json() lo cita entero.
+  ["(g) 200 cuyo cuerpo no es JSON", () => new Response(OLD_RT, { status: 200 }), undefined, false],
+  // Un JWT sin exp: inservible, pero sigue siendo una credencial y lleva MARK en la firma.
+  ["(h) 200 con un access_token sin exp", () => new Response(JSON.stringify({ access_token: jwt(), refresh_token: NEW_RT }), { status: 200 }), undefined, false],
+] as [string, () => Response, string | undefined, boolean][]) {
+  reset();
+  diauth = make;
+  const kv = memoryKV({ tokens: stored ?? tokensJson(jwt(nowSec() + 11 * 3600)) },
+    { events, failPut: failPut ? new Error("KV no disponible") : undefined });
+  const { lines, threw, rejections } = await runCron(kv);
+  check(`T15 ${label}: ningun log con un secreto`, lines.some((l) => l.includes(MARK)), false);
+  check(`T15 ${label}: el error lanzado no lleva un secreto`, threw !== undefined && format(threw).includes(MARK), false);
+  check(`T15 ${label}: ningun rechazo de waitUntil con un secreto`, rejections.some((r) => format(r).includes(MARK)), false);
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
