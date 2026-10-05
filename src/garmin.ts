@@ -4,12 +4,15 @@
 // MFA) NO esta aqui a proposito: lo haces una vez en tu maquina con
 // `garmin-mcp-auth` y cargas garmin_tokens.json en el KV GARMIN_KV, clave "tokens".
 // Aqui solo se lee de KV el token de acceso y se llama a connectapi.garmin.com con
-// Bearer. Las cabeceras de connectapi vienen de garth 0.8.0.
+// Bearer. User-Agent sacado de garth 0.8.0; NK, de python-garminconnect 0.3.2.
+
+import { parseTokens } from "./tokens.ts";
 
 const API = "https://connectapi.garmin.com";
 const UA = "GCM-iOS-5.22.1.4";            // garth/http.py — Garmin rechaza otros
 
-// Cache por isolate del displayName: no es secreto y no cambia.
+// Cache por isolate del displayName: no es secreto y solo cambiaria si se carga en
+// KV la sesion de otra cuenta (un isolate caliente seguiria con el nombre anterior).
 let displayNameCache: string | null = null;
 
 /** GET/POST/DELETE contra connectapi con el Bearer de la sesion guardada en KV. */
@@ -18,7 +21,7 @@ export async function connectapi(
   path: string,
   init: { method?: string; body?: unknown } = {},
 ): Promise<unknown> {
-  const tokens = (await kv.get("tokens", "json")) as { di_token: string };
+  const { tokens } = parseTokens(await kv.get("tokens"));
   const headers: Record<string, string> = {
     Authorization: `Bearer ${tokens.di_token}`,
     "User-Agent": UA,

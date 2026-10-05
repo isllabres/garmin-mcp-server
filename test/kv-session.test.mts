@@ -5,7 +5,7 @@
 import "./workers-crypto.mts";
 import worker from "../src/index.ts";
 import { isDeepStrictEqual } from "node:util";
-import { memoryKV, jwt, nowSec, tokensJson, NEW_RT } from "./fakes.mts";
+import { memoryKV, jwt, nowSec, tokensJson, captureLogs, MARK, NEW_RT } from "./fakes.mts";
 
 let fail = 0;
 const check = (name: string, got: unknown, want: unknown) => {
@@ -99,6 +99,53 @@ const rpc = async (env: unknown, body: unknown) => {
         JSON.stringify({ userData: { weight: 70000 } }, null, 2));
     }
   }
+}
+
+// --- T3 should_read_kv_on_every_tools_call_and_never_refresh_from_a_request ---
+// Guarda contra una cache de token por isolate (seguiria usando A tras una rotacion)
+// y contra un refresco "de ayuda" desde una peticion, que la haria segunda escritora.
+{
+  events = [];
+  calls.length = 0;
+  const A = jwt(nowSec() + 3600);        // 1 h: dentro de la ventana de 12 h del cron
+  const B = jwt(nowSec() + 20 * 3600);
+  const kv = memoryKV({ tokens: tokensJson(A) }, { events });
+  const env = { GARMIN_KV: kv, UPSTREAM_TOKEN: "test-upstream" };
+  const call = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_user_settings", arguments: {} } };
+  await rpc(env, call);
+  kv.set("tokens", tokensJson(B, { di_refresh_token: NEW_RT }));   // simula una pasada del cron
+  await rpc(env, call);
+  const api = calls.filter((c) => c.url.startsWith("https://connectapi.garmin.com/"));
+  check("T3 primera llamada con Bearer A", api[0]?.headers.get("Authorization"), "Bearer " + A);
+  check("T3 segunda llamada con Bearer B", api[1]?.headers.get("Authorization"), "Bearer " + B);
+  check("T3 ninguna peticion refresca en diauth", calls.filter((c) => c.url === DIAUTH).length, 0);
+  check("T3 ninguna peticion escribe en KV", events.filter((e) => e.startsWith("kv.put")).length, 0);
+}
+
+// --- T4 should_return_the_no_session_isError_when_kv_has_no_or_malformed_tokens ---
+// Texto exacto: el SyntaxError de JSON.parse cita la entrada, y anadirlo al mensaje
+// filtraria el valor guardado al resultado de la herramienta.
+const NO_SESSION = "Error: sin sesion de Garmin: ejecuta garmin-mcp-auth y carga el token en KV";
+for (const [label, stored] of [
+  ["sin clave tokens", undefined],
+  ["no es JSON", "no-es-json-SECRETO"],
+  ["falta di_refresh_token", tokensJson(jwt(nowSec() + 20 * 3600), { di_refresh_token: undefined })],
+  ["di_token sin tres segmentos", tokensJson("SECRETO-sin-puntos")],
+  ["di_token sin exp", tokensJson(jwt())],
+] as [string, string | undefined][]) {
+  events = [];
+  calls.length = 0;
+  const env = { GARMIN_KV: memoryKV(stored === undefined ? {} : { tokens: stored }, { events }), UPSTREAM_TOKEN: "test-upstream" };
+  let r: Awaited<ReturnType<typeof rpc>> | undefined;
+  const { lines } = await captureLogs(async () => {
+    r = await rpc(env, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_user_settings", arguments: {} } });
+  });
+  check(`T4 ${label}: HTTP 200`, r?.status, 200);
+  check(`T4 ${label}: sin error JSON-RPC`, r ? "error" in r.body : undefined, false);
+  check(`T4 ${label}: isError`, r?.body.result?.isError, true);
+  check(`T4 ${label}: texto exacto de sin sesion`, r?.body.result?.content?.[0]?.text, NO_SESSION);
+  check(`T4 ${label}: 0 llamadas a fetch`, calls.length, 0);
+  check(`T4 ${label}: ningun log con un secreto`, lines.some((l) => l.includes(MARK)), false);
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");

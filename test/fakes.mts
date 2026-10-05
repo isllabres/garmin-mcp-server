@@ -1,6 +1,8 @@
 // Dobles compartidos por los tests de la sesion DI en KV. No es un .test.mts:
 // npm test no lo ejecuta, como workers-crypto.mts.
 
+import { format } from "node:util";
+
 type GetType = "text" | "json" | { type?: "text" | "json" };
 
 // KV en memoria. Graba "kv.get <clave>" y "kv.put <clave>" en events para que
@@ -52,3 +54,16 @@ export const jwt = (exp?: number) =>
 // La forma de garmin_tokens.json. { di_refresh_token: undefined } quita la clave.
 export const tokensJson = (di_token: string, over: Record<string, unknown> = {}) =>
   JSON.stringify({ di_token, di_refresh_token: OLD_RT, di_client_id: CLIENT, ...over });
+
+// Graba todo lo que se escribe en la consola mientras corre fn y la restaura al
+// acabar. Envuelve solo el Act: check() imprime PASS/FALLO con console.log.
+export async function captureLogs(fn: () => unknown) {
+  const lines: string[] = [];
+  let threw: unknown;
+  const methods = ["log", "info", "warn", "error", "debug"] as const;
+  const orig = methods.map((m) => console[m]);
+  for (const m of methods) console[m] = (...args: unknown[]) => { lines.push(format(...args)); };
+  try { await fn(); } catch (e) { threw = e; }
+  finally { methods.forEach((m, i) => { console[m] = orig[i]; }); }
+  return { lines, threw };
+}
