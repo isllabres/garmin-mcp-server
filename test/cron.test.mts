@@ -105,6 +105,7 @@ for (const [id, basic] of [
 for (const [label, extra] of [
   ["(a) sin refresh_token", {}],
   ["(b) refresh_token null", { refresh_token: null }],
+  ["(c) refresh_token vacio", { refresh_token: "" }],
 ] as [string, Record<string, unknown>][]) {
   reset();
   const NEW_AT = jwt(nowSec() + 89604);
@@ -159,6 +160,61 @@ for (const [label, stored] of [
   check(`T11 ${label}: 0 llamadas de red`, calls.length, 0);
   check(`T11 ${label}: no escribe en KV`, events.filter((e) => e.startsWith("kv.put")).length, 0);
   check(`T11 ${label}: KV sin cambios`, kv.raw("tokens"), stored ?? null);
+}
+
+// --- T12 should_leave_kv_untouched_and_ask_for_a_relogin_when_diauth_rejects_the_refresh_token ---
+// 400/401 es definitivo: no se toca KV y el log dice que hay que volver a entrar.
+for (const [label, status, body] of [
+  ["(a) 400 invalid_grant", 400, '{"error":"invalid_grant"}'],
+  ["(b) 401 vacio", 401, ""],
+] as [string, number, string][]) {
+  reset();
+  diauth = () => new Response(body, { status });
+  const before = tokensJson(jwt(nowSec() + 11 * 3600));
+  const kv = memoryKV({ tokens: before }, { events });
+  const { lines } = await runCron(kv);
+  check(`T12 ${label}: no escribe en KV`, events.filter((e) => e.startsWith("kv.put")).length, 0);
+  check(`T12 ${label}: KV sin cambios`, kv.raw("tokens"), before);
+  check(`T12 ${label}: log de refresco rechazado`, lines.some((l) => l.includes("refresco rechazado: ejecuta garmin-mcp-auth")), true);
+  check(`T12 ${label}: el log lleva el estado`, lines.join("\n").includes(String(status)), true);
+}
+
+// --- T13 should_leave_kv_untouched_when_the_refresh_fails_transiently_or_returns_an_unusable_token ---
+// Un fallo pasajero deja KV igual para que la siguiente pasada reintente con el mismo
+// refresh token. Un 200 nunca guarda un token que las peticiones rechazarian.
+for (const [label, make, status] of [
+  ["429", () => new Response("", { status: 429 }), "429"],
+  ["500", () => new Response("", { status: 500 }), "500"],
+  ["503", () => new Response("", { status: 503 }), "503"],
+  ["error de red", () => { throw new TypeError("fetch failed"); }, null],
+  ["200 con {}", () => new Response("{}", { status: 200 }), "200"],
+  ["200 con un access_token que no es JWT", () => new Response(JSON.stringify({ access_token: "no-es-un-jwt", refresh_token: NEW_RT }), { status: 200 }), "200"],
+] as [string, () => Response, string | null][]) {
+  reset();
+  diauth = make;
+  const before = tokensJson(jwt(nowSec() + 11 * 3600));
+  const kv = memoryKV({ tokens: before }, { events });
+  const { lines } = await runCron(kv);
+  check(`T13 ${label}: no escribe en KV`, events.filter((e) => e.startsWith("kv.put")).length, 0);
+  check(`T13 ${label}: KV sin cambios`, kv.raw("tokens"), before);
+  check(`T13 ${label}: no se da por rechazado`, lines.some((l) => l.includes("refresco rechazado")), false);
+  check(`T13 ${label}: deja algun log`, lines.length > 0, true);
+  if (status) check(`T13 ${label}: el log lleva el estado`, lines.join("\n").includes(status), true);
+}
+
+// --- T14 should_log_a_relogin_hint_when_the_kv_write_after_a_successful_refresh_fails ---
+// Garmin ya ha rotado el token: el guardado puede estar muerto. Reintentar en la misma
+// pasada fallaria en el mejor caso y quemaria el token en el peor.
+{
+  reset();
+  diauth = ok200({ access_token: jwt(nowSec() + 89604), refresh_token: NEW_RT, expires_in: 89604 });
+  const before = tokensJson(jwt(nowSec() + 11 * 3600));
+  const kv = memoryKV({ tokens: before }, { events, failPut: new Error("KV no disponible") });
+  const { lines } = await runCron(kv);
+  check("T14 un solo refresco", calls.filter((c) => c.url === DIAUTH).length, 1);
+  check("T14 log que pide volver a entrar", lines.some((l) => l.includes("garmin-mcp-auth")), true);
+  check("T14 no se da por rechazado", lines.some((l) => l.includes("refresco rechazado")), false);
+  check("T14 KV sin cambios", kv.raw("tokens"), before);
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");

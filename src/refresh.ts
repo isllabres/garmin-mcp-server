@@ -25,7 +25,8 @@ const NATIVE: Record<string, string> = {
 export async function refreshSession(kv: KVNamespace): Promise<void> {
   const { tokens, exp } = parseTokens(await kv.get(TOKENS_KEY));
   if (exp - Math.floor(Date.now() / 1000) >= REFRESH_BELOW_SECONDS) return;
-  const res = await fetch(DIAUTH, {
+
+  const init: RequestInit = {
     method: "POST",
     headers: {
       ...NATIVE,
@@ -40,13 +41,48 @@ export async function refreshSession(kv: KVNamespace): Promise<void> {
       client_id: tokens.di_client_id,
       refresh_token: tokens.di_refresh_token,
     }),
-  });
-  const data = (await res.json()) as { access_token: string; refresh_token?: string | null };
-  // Antes que nada: el refresh token anterior puede haber dejado de valer.
-  await kv.put(TOKENS_KEY, JSON.stringify({
-    di_token: data.access_token,
-    // Si Garmin no lo rota, se conserva el guardado.
-    di_refresh_token: data.refresh_token ?? tokens.di_refresh_token,
-    di_client_id: tokens.di_client_id,
-  }));
+  };
+
+  // Los logs solo llevan texto fijo y el estado HTTP: nunca un token ni un cuerpo.
+  let res: Response;
+  try {
+    res = await fetch(DIAUTH, init);
+  } catch {
+    console.error("refresco fallido (error de red): se reintenta en la proxima pasada");
+    return;
+  }
+  if (res.status === 400 || res.status === 401) {
+    console.error(`refresco rechazado: ejecuta garmin-mcp-auth (HTTP ${res.status})`);
+    return;
+  }
+  if (!res.ok) {
+    console.error(`refresco fallido (HTTP ${res.status}): se reintenta en la proxima pasada`);
+    return;
+  }
+
+  // El candidato pasa por el mismo parseTokens que las peticiones: nunca se guarda una
+  // sesion malformada. Si Garmin no rota el refresh token (ausente, null o vacio), se
+  // conserva el guardado.
+  let next: string;
+  try {
+    const data = (await res.json()) as { access_token?: unknown; refresh_token?: unknown };
+    next = JSON.stringify({
+      di_token: data.access_token,
+      di_refresh_token: typeof data.refresh_token === "string" && data.refresh_token
+        ? data.refresh_token : tokens.di_refresh_token,
+      di_client_id: tokens.di_client_id,
+    });
+    parseTokens(next);
+  } catch {
+    console.error(`refresco fallido (HTTP ${res.status} sin un token valido): se reintenta en la proxima pasada`);
+    return;
+  }
+  // Primera E/S tras el refresco: el refresh token anterior puede haber dejado de valer.
+  // Si no se puede guardar, el rotado se pierde y el refresco no se repite en esta
+  // pasada: si Garmin ya invalido el guardado, habra que volver a entrar.
+  try {
+    await kv.put(TOKENS_KEY, next);
+  } catch {
+    console.error("refresco hecho pero no se pudo guardar en KV: ejecuta garmin-mcp-auth");
+  }
 }
