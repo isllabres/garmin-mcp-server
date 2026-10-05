@@ -3,6 +3,7 @@
 
 import { TOOLS, TOOL_MAP } from "./tools.ts";
 import { isAuthorized } from "./auth.ts";
+import { refreshSession } from "./refresh.ts";
 
 const PROTOCOL = "2025-06-18";
 
@@ -103,5 +104,10 @@ export default {
 
     const res = await handleRpc(body, env);
     return res === null ? new Response(null, { status: 202 }) : json(res);
+  },
+
+  // Cron Trigger: unico escritor de la sesion en KV.
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    await refreshSession(env.GARMIN_KV);
   },
 };
