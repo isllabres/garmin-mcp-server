@@ -4,7 +4,8 @@
 // fetch esta sustituido por un stub que graba cada llamada: nunca sale a la red.
 import "./workers-crypto.mts";
 import worker from "../src/index.ts";
-import { memoryKV } from "./fakes.mts";
+import { isDeepStrictEqual } from "node:util";
+import { memoryKV, jwt, nowSec, tokensJson, NEW_RT } from "./fakes.mts";
 
 let fail = 0;
 const check = (name: string, got: unknown, want: unknown) => {
@@ -30,7 +31,7 @@ globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     return new Response(JSON.stringify({ userData: { weight: 70000 } }), { status: 200 });
   }
   if (req.url === DIAUTH) {
-    return new Response(JSON.stringify({ access_token: "a.b.c", refresh_token: "r", expires_in: 89604 }), { status: 200 });
+    return new Response(JSON.stringify({ access_token: jwt(nowSec() + 89604), refresh_token: NEW_RT, expires_in: 89604 }), { status: 200 });
   }
   throw new Error("fetch inesperado: " + req.url);
 };
@@ -61,10 +62,43 @@ const rpc = async (env: unknown, body: unknown) => {
   check("T1 initialize sin sesion: sin error", "error" in init.body, false);
   check("T1 initialize sin sesion: protocolVersion", init.body.result?.protocolVersion, "2025-06-18");
   check("T1 ping sin sesion: HTTP 200", ping.status, 200);
-  check("T1 ping sin sesion: result {}", JSON.stringify(ping.body.result), "{}");
+  check("T1 ping sin sesion: result {}", isDeepStrictEqual(ping.body.result, {}), true);
   check("T1 tools/list sin sesion: HTTP 200", list.status, 200);
   check("T1 tools/list sin sesion: 14 herramientas", list.body.result?.tools?.length, 14);
   check("T1 ni KV ni fetch", events.length, 0);
+}
+
+// --- T2 should_send_the_kv_access_token_as_bearer_with_todays_connectapi_headers ---
+// Guarda la regla de "cabeceras obligatorias": las de Android del refresco nunca
+// deben colarse en connectapi. get_user_settings no pasa por displayName(), asi que
+// el recuento no depende de la cache de modulo.
+{
+  const AT = jwt(nowSec() + 20 * 3600);
+  for (const [label, name, args, method, url, body, ctype] of [
+    ["(a) get_user_settings", "get_user_settings", {}, "GET",
+      "https://connectapi.garmin.com/userprofile-service/userprofile/user-settings", "", null],
+    ["(b) schedule_workout", "schedule_workout", { workout_id: "987", date: "2026-03-02" }, "POST",
+      "https://connectapi.garmin.com/workout-service/schedule/987", '{"date":"2026-03-02"}', "application/json"],
+  ] as [string, string, Record<string, unknown>, string, string, string, string | null][]) {
+    events = [];
+    calls.length = 0;
+    const env = { GARMIN_KV: memoryKV({ tokens: tokensJson(AT) }, { events }), UPSTREAM_TOKEN: "test-upstream" };
+    const r = await rpc(env, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } });
+    const c = calls[0];
+    check(`T2 ${label}: una sola llamada`, calls.length, 1);
+    check(`T2 ${label}: metodo y URL`, `${c?.method} ${c?.url}`, `${method} ${url}`);
+    check(`T2 ${label}: cuerpo`, c?.body, body);
+    check(`T2 ${label}: Bearer del token de KV`, c?.headers.get("Authorization"), "Bearer " + AT);
+    check(`T2 ${label}: User-Agent de hoy`, c?.headers.get("User-Agent"), "GCM-iOS-5.22.1.4");
+    check(`T2 ${label}: NK`, c?.headers.get("NK"), "NT");
+    check(`T2 ${label}: Accept`, c?.headers.get("Accept"), "application/json");
+    check(`T2 ${label}: Content-Type`, c?.headers.get("Content-Type") ?? null, ctype);
+    check(`T2 ${label}: sin isError`, r.body.result?.isError, undefined);
+    if (name === "get_user_settings") {
+      check(`T2 ${label}: devuelve el JSON de Garmin`, r.body.result?.content?.[0]?.text,
+        JSON.stringify({ userData: { weight: 70000 } }, null, 2));
+    }
+  }
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");

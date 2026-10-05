@@ -5,6 +5,7 @@
 import { isDeepStrictEqual } from "node:util";
 import "./workers-crypto.mts";
 import worker from "../src/index.ts";
+import { memoryKV } from "./fakes.mts";
 
 // Trampa de red: es un stub de guarda, nunca se comprueba cuantas veces se llamo.
 globalThis.fetch = () => { throw new Error("red prohibida en tests"); };
@@ -21,8 +22,8 @@ const check = (name: string, got: unknown, want: unknown, detalle?: string) => {
   }
 };
 
-// Sin GARMIN_CONSUMER_KEY/SECRET: presetConsumer no hace nada y las caches no se tocan.
-const env = { GARMIN_OAUTH1: '{"oauth_token":"x","oauth_token_secret":"y"}', UPSTREAM_TOKEN: "t" };
+// KV vacio: el despacho JSON-RPC de estos tests nunca necesita la sesion de Garmin.
+const env = { GARMIN_KV: memoryKV(), UPSTREAM_TOKEN: "t" };
 
 // Manda raw tal cual. Si fetch rechaza, lo devuelve en rejected en vez de abortar el script.
 async function post(raw: string) {

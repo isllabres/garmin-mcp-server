@@ -2,16 +2,13 @@
 // Transporte: Streamable HTTP, sin estado — cada POST se responde con JSON.
 
 import { TOOLS, TOOL_MAP } from "./tools.ts";
-import { presetConsumer, type OAuth1Token } from "./garmin.ts";
 import { isAuthorized } from "./auth.ts";
 
 const PROTOCOL = "2025-06-18";
 
 interface Env {
-  GARMIN_OAUTH1: string;    // secreto: contenido de oauth1_token.json
+  GARMIN_KV: KVNamespace;   // sesion DI OAuth2 en la clave "tokens" (garmin-mcp-auth)
   UPSTREAM_TOKEN: string;   // secreto: el portero
-  GARMIN_CONSUMER_KEY?: string;     // opcional pero recomendado
-  GARMIN_CONSUMER_SECRET?: string;
 }
 
 const rpc = (id: unknown, result: unknown) => ({ jsonrpc: "2.0", id, result });
@@ -29,16 +26,6 @@ type RpcMessage = { id?: unknown; method?: unknown; params?: any };
 const isMessage = (m: unknown): m is RpcMessage =>
   typeof m === "object" && m !== null && !Array.isArray(m);
 const invalidRequest = () => rpcErr(null, -32600, "Peticion invalida");
-
-// Solo tools/call necesita el token: los metodos de protocolo funcionan sin el.
-// El error no incluye el valor: JSON.parse lo citaria y saldria en el resultado.
-function readOAuth1(raw: string): OAuth1Token {
-  try {
-    const t = JSON.parse(raw) as OAuth1Token;
-    if (t.oauth_token && t.oauth_token_secret) return t;
-  } catch { /* cae al error de abajo */ }
-  throw new Error("GARMIN_OAUTH1 no es un oauth1_token.json valido");
-}
 
 async function handleRpc(req: unknown, env: Env): Promise<unknown | null> {
   if (!isMessage(req)) return invalidRequest();
@@ -69,7 +56,7 @@ async function handleRpc(req: unknown, env: Env): Promise<unknown | null> {
       const tool = TOOL_MAP.get(params?.name);
       if (!tool) return rpcErr(id, -32602, `Herramienta desconocida: ${params?.name}`);
       try {
-        const out = await tool.handler(readOAuth1(env.GARMIN_OAUTH1), params.arguments ?? {});
+        const out = await tool.handler(env.GARMIN_KV, params.arguments ?? {});
         return rpc(id, {
           content: [{ type: "text", text: JSON.stringify(out, null, 2) }],
         });
@@ -101,8 +88,6 @@ export default {
     if (request.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
-
-    presetConsumer(env.GARMIN_CONSUMER_KEY, env.GARMIN_CONSUMER_SECRET);
 
     let body: any;
     try { body = await request.json(); }

@@ -31,3 +31,24 @@ export function memoryKV(
     raw(key: string) { return store.get(key) ?? null; },
   };
 }
+
+// Todo secreto de los fixtures contiene MARK: un solo includes(MARK) delata la
+// fuga de cualquiera de ellos a un resultado o a un log.
+export const MARK = "SECRETO";
+export const CLIENT = "GARMIN_CONNECT_MOBILE_ANDROID_DI_2025Q2";
+export const OLD_RT = "rt-viejo+/=SECRETO";   // +/= obligan a codificar el formulario
+export const NEW_RT = "rt-nuevo-SECRETO";
+
+export const nowSec = () => Math.floor(Date.now() / 1000);
+
+// JWT de prueba con el exp dado (sin exp si es undefined). El payload empieza por
+// eyJzdWIiOiJ-fn4_Pz8-Pj4i: lleva - y _, asi que un atob directo sobre el segmento
+// falla y obliga a decodificar base64url.
+export const jwt = (exp?: number) =>
+  "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9." +
+  Buffer.from(JSON.stringify({ sub: "~~~???>>>", exp })).toString("base64url") +
+  ".firmaSECRETO";
+
+// La forma de garmin_tokens.json. { di_refresh_token: undefined } quita la clave.
+export const tokensJson = (di_token: string, over: Record<string, unknown> = {}) =>
+  JSON.stringify({ di_token, di_refresh_token: OLD_RT, di_client_id: CLIENT, ...over });
