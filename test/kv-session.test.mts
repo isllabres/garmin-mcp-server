@@ -46,8 +46,8 @@ const rpc = async (env: unknown, body: unknown) => {
 };
 
 // --- T1 should_answer_initialize_ping_and_tools_list_without_reading_kv ---
-// Antes, sin GARMIN_OAUTH1 todo era HTTP 500 / -32603. Un get que lanza, junto con
-// events vacio, pilla una lectura de KV adelantada que se trague el fallo.
+// Antes, sin el secreto de OAuth1 todo era HTTP 500 / -32603. Un get que lanza,
+// junto con events vacio, pilla una lectura de KV adelantada que se trague el fallo.
 {
   events = [];
   calls.length = 0;

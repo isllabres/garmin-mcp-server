@@ -1,6 +1,7 @@
-// Comprobacion del Bearer del portero. Sin imports de node:*: el Worker no tiene
-// nodejs_compat. test/auth.test.mts la importa directamente e inyecta su comparador;
-// los tests que pasan por worker.fetch usan el de por defecto con test/workers-crypto.mts.
+// Comprobacion del Bearer del portero. Sin modulos integrados de Node: el Worker no
+// tiene nodejs_compat. test/auth.test.mts la importa directamente e inyecta su
+// comparador; los tests que pasan por worker.fetch usan el de por defecto con
+// test/workers-crypto.mts.
 
 type Eq = (a: Uint8Array, b: Uint8Array) => boolean;
 
