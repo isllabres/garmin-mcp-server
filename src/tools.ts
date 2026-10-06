@@ -1,10 +1,10 @@
-import { connectapi, displayName, type OAuth1Token } from "./garmin.ts";
+import { connectapi, displayName } from "./garmin.ts";
 import { idArg, dateArg, intArg, invalid } from "./validate.ts";
 
 // unknown impide operar con un argumento crudo (a.month - 1 no compila), pero una
 // plantilla `${a.x}` acepta unknown: todo argumento que vaya a una URL debe pasar
 // por idArg, dateArg o intArg. El test 10 de test/tools.test.mts lo comprueba.
-type Handler = (t: OAuth1Token, a: Record<string, unknown>) => Promise<unknown>;
+type Handler = (t: KVNamespace, a: Record<string, unknown>) => Promise<unknown>;
 
 const DATE = { type: "string", description: "Fecha YYYY-MM-DD" } as const;
 const ACTIVITY_ID = { type: "string", description: "activityId tal como viene en get_activities" } as const;

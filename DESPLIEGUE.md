@@ -4,53 +4,64 @@ Sin contenedor, sin Docker, sin Workers Paid. Mismo patrón que MyWhoosh.
 
 ```
 Claude ──► MCP Portal (Access + tu IdP) ──► Worker ──► connectapi.garmin.com
-                     inyecta Bearer        valida       OAuth1 → oauth2 → REST
+                     inyecta Bearer        valida       Bearer de la sesión en KV
+Cron (cada 6 h) ──► Worker ──► diauth.garmin.com: refresca y guarda en KV los tokens rotados
 ```
 
-**Por qué esto es pequeño.** El login de Garmin (SSO, MFA, user-agent de
-WebView) es lo complicado, y **no corre aquí**: lo haces una vez en tu máquina.
-En ejecución solo hacen falta dos cosas: un POST firmado con OAuth1 para
-refrescar el token, y GETs con Bearer. De ahí que quepa en 400 líneas.
+**Por qué esto es pequeño.** El login de Garmin (SSO y MFA) es lo complicado, y
+**no corre aquí**: lo haces una vez en tu máquina. En ejecución solo hacen falta
+dos cosas: llamadas con Bearer leyendo la sesión de KV, y un refresco programado
+del token (un POST a diauth cada ~18 h, desde un Cron Trigger). De ahí que quepa
+en unos pocos cientos de líneas.
 
 ## Lo que está verificado
 
-- Firma OAuth1/HMAC-SHA1 contra el vector de test canónico (`test/oauth1.test.mts`).
+- Refresco DI OAuth2 probado desde el edge de Cloudflare (`wrangler dev --remote`,
+  2026-10-05): diauth respondió 200 y connectapi aceptó el token nuevo.
 - Protocolo MCP probado en local: `initialize`, `tools/list`, `tools/call`,
   notificaciones, lotes, y el portero devolviendo 401.
-- Endpoints y User-Agent extraídos de garth 0.8.0 y garminconnect 0.3.2,
-  no de memoria.
+- Endpoints y User-Agent extraídos de garth 0.8.0 y garminconnect 0.3.2, y el
+  refresco DI de garminconnect 0.3.17, no de memoria.
 
-## 1. Saca el token de Garmin (una vez, en local)
+## 1. Entra en Garmin (una vez, en local)
 
 ```bash
 uvx --from "git+https://github.com/isllabres/garmin-mcp-server#subdirectory=auth" garmin-mcp-auth
 ```
 
-Pide email, contraseña y código MFA, entra con garth 0.8.0 y guarda
-`~/.garminconnect/oauth1_token.json`, legible solo por ti. Ese JSON entero es el
-secreto. Dura ~1 año.
+Pide email, contraseña y código MFA siempre, aunque ya exista una sesión
+guardada, entra con python-garminconnect 0.3.17 y guarda los tokens DI OAuth2 en `~/.garminconnect/garmin_tokens.json`, legible
+solo por ti: un token de acceso que dura ~25 h y un refresh token que dura
+30 días y rota en cada refresco.
 
-> garth ya no se mantiene: Garmin cambió su login en marzo de 2026 y el login
-> OAuth1 de garth funciona a ratos desde entonces. Si falla con `401` o `429`,
-> espera antes de reintentar: cada intento alarga el bloqueo.
+> Garmin cambió su login en marzo de 2026. Si falla con `429`, espera antes de
+> reintentar: cada intento alarga el bloqueo. Si sale con `Login sin tokens DI
+> validos`, Garmin no dio tokens DI utilizables (lo normal es que solo diera una
+> sesión web): no se ha guardado nada y el KV sigue igual; reintenta más tarde.
 
-## 2. Fija el consumer (recomendado)
+## 2. Crea el namespace de KV
 
-Sin esto, el Worker descarga las credenciales de consumer de un bucket S3 de
-terceros en cada arranque en frío. Si ese bucket cae, tu rutina falla:
+Este repo ya tiene su id en `wrangler.jsonc`. Para tu copia, créalo y deja que
+wrangler escriba el id:
 
 ```bash
-curl -s https://thegarth.s3.amazonaws.com/oauth_consumer.json
+npm install
+npx wrangler kv namespace create GARMIN_KV --binding GARMIN_KV --update-config
 ```
 
-## 3. Sube los secretos
+## 3. Carga la sesión y el portero
 
 ```bash
-npx wrangler secret put GARMIN_OAUTH1          # el JSON del paso 1
+npx wrangler kv key put tokens --binding GARMIN_KV --remote --path ~/.garminconnect/garmin_tokens.json
 npx wrangler secret put UPSTREAM_TOKEN         # openssl rand -hex 32
-npx wrangler secret put GARMIN_CONSUMER_KEY    # del paso 2
-npx wrangler secret put GARMIN_CONSUMER_SECRET
 ```
+
+Un Cron Trigger (cada 6 h) refresca el token de acceso cuando le quedan menos de
+12 h y guarda en KV el refresh token rotado. Una vez cargada la sesión, no
+refresques ese fichero en otro sitio: el refresh token rota y el Worker se
+quedaría sin sesión. No quites `--remote`: sin él, wrangler escribe en el KV
+local y el Worker desplegado no ve la sesión. Para volver a entrar, repite los
+pasos 1 y 3.
 
 ## 4. Despliega
 
@@ -100,7 +111,10 @@ curl -s -X POST https://garmin-mcp-server.<tu-subdominio>.workers.dev \
 
 ## Mantenimiento
 
-- **Token**: caduca en ~1 año. Repite pasos 1 y 3.
+- **Sesión**: el refresh token dura 30 días y el cron lo renueva cada ~18 h, así
+  que no caduca mientras el Worker esté desplegado. Vuelve a entrar (pasos 1 y 3)
+  solo si una herramienta responde `sin sesion de Garmin` o los logs muestran
+  `refresco rechazado` o `refresco hecho pero no se pudo guardar en KV`.
 - **Endpoints**: si Garmin cambia una ruta, se toca en `src/tools.ts`.
 - **El riesgo de fondo no cambia**: es API no oficial y Garmin puede
   suspender la cuenta. Eso es del método, no del lenguaje.

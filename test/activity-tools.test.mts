@@ -2,9 +2,9 @@
 // get_activity_exercise_sets (series de fuerza), y que get_activity ya no promete
 // vueltas ni series.
 import { TOOLS, TOOL_MAP } from "../src/tools.ts";
-import { presetConsumer } from "../src/garmin.ts";
 import "./workers-crypto.mts";
 import worker from "../src/index.ts";
+import { memoryKV, jwt, nowSec, tokensJson } from "./fakes.mts";
 
 let fail = 0;
 const check = (name: string, got: unknown, want: unknown) => {
@@ -15,29 +15,20 @@ const check = (name: string, got: unknown, want: unknown) => {
 
 const NEW_TOOLS = ["get_activity_splits", "get_activity_exercise_sets"];
 
-// Stub de fetch que graba cada llamada. Contesta el intercambio OAuth y las rutas
-// de actividad (con el fixture del test en curso); cualquier otra URL lanza, asi
-// que una llamada no prevista falla en vez de salir a la red.
-const EXCHANGE = "https://connectapi.garmin.com/oauth-service/oauth/exchange/user/2.0";
+// Stub de fetch que graba cada llamada. Contesta las rutas de actividad (con el
+// fixture del test en curso); cualquier otra URL lanza, asi que una llamada no
+// prevista falla en vez de salir a la red.
 const ACTIVITY = "https://connectapi.garmin.com/activity-service/activity/";
 const calls: { url: string; method: string; body: unknown }[] = [];
 let fixture: unknown;
 globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   calls.push({ url, method: init?.method ?? "GET", body: init?.body });
-  if (url === EXCHANGE && init?.method === "POST") {
-    return new Response(JSON.stringify({ access_token: "test-access-token", expires_in: 3600 }), { status: 200 });
-  }
   if (url.startsWith(ACTIVITY)) return new Response(JSON.stringify(fixture), { status: 200 });
   throw new Error("fetch inesperado: " + url);
 };
-// Llamadas a la API sin el intercambio: que haya intercambio o no depende de si
-// tokenCache, que vive en el modulo, ya tiene token por un test anterior.
-const apiCalls = () => calls.filter((c) => c.url !== EXCHANGE);
-
-// Consumer precargado: nada se pide al bucket S3.
-presetConsumer("test-consumer-key", "test-consumer-secret");
-const TOKEN = { oauth_token: "test-token", oauth_token_secret: "test-token-secret" };
+// Sesion valida en KV.
+const KV = memoryKV({ tokens: tokensJson(jwt(nowSec() + 20 * 3600)) });
 
 // --- T1 should_register_get_activity_splits_and_get_activity_exercise_sets_with_unique_names ---
 {
@@ -76,9 +67,9 @@ for (const [test, name, suffix, data] of [
   fixture = data;
   calls.length = 0;
   let result: unknown;
-  try { result = await TOOL_MAP.get(name)!.handler(TOKEN, { activity_id: "12345678901" }); }
+  try { result = await TOOL_MAP.get(name)!.handler(KV as never, { activity_id: "12345678901" }); }
   catch (e) { result = `THROW: ${(e as Error).message}`; }
-  const api = apiCalls();
+  const api = calls;
   check(`${test} ${name}: 1 llamada a la API`, api.length, 1);
   check(`${test} ${name}: URL de /${suffix}`, api[0]?.url, `${ACTIVITY}12345678901/${suffix}`);
   check(`${test} ${name}: metodo GET`, api[0]?.method, "GET");
@@ -108,20 +99,17 @@ for (const name of ["get_activity", ...NEW_TOOLS]) {
 
 // --- T7 should_reject_an_invalid_activity_id_on_the_new_tools_before_any_fetch_exactly_like_get_activity ---
 // Por tools/call: un activity_id invalido es un error de la herramienta (isError), con el
-// mismo texto que da get_activity y sin ninguna llamada a fetch, ni siquiera el intercambio.
+// mismo texto que da get_activity y sin ninguna llamada a fetch.
 // "12/../34" importa: la URL se normalizaria a /activity/34/... y leeria otra actividad.
 {
-  const ENV = {
-    GARMIN_OAUTH1: JSON.stringify(TOKEN), UPSTREAM_TOKEN: "test-upstream",
-    GARMIN_CONSUMER_KEY: "test-consumer-key", GARMIN_CONSUMER_SECRET: "test-consumer-secret",
-  };
+  const ENV = { GARMIN_KV: KV, UPSTREAM_TOKEN: "test-upstream" };
   type RpcBody = { error?: unknown; result?: { isError?: boolean; content?: { text: string }[] } };
   const call = async (name: string, args: Record<string, unknown>) => {
     const res = await worker.fetch(new Request("http://localhost/", {
       method: "POST",
       headers: { Authorization: "Bearer test-upstream", "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
-    }), ENV);
+    }), ENV as never);
     return await res.json() as RpcBody;
   };
   for (const args of [{ activity_id: "abc" }, { activity_id: "12/../34" }, {}]) {

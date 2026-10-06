@@ -2,9 +2,9 @@
 // Garmin y que, con argumentos validos, construyen exactamente la peticion de hoy.
 // fetch esta sustituido por un stub que graba cada llamada: nunca sale a la red.
 import { TOOL_MAP } from "../src/tools.ts";
-import { presetConsumer } from "../src/garmin.ts";
 import "./workers-crypto.mts";
 import worker from "../src/index.ts";
+import { memoryKV, jwt, nowSec, tokensJson } from "./fakes.mts";
 
 let fail = 0;
 const check = (name: string, got: unknown, want: unknown) => {
@@ -33,20 +33,19 @@ const calls: { method: string; url: string; body: unknown }[] = [];
 globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   calls.push({ method: init?.method ?? "GET", url, body: init?.body });
-  if (url.includes("/oauth-service/oauth/exchange/user/2.0")) {
-    return new Response(JSON.stringify({ access_token: "AT", expires_in: 3600 }), { status: 200 });
-  }
   if (url.endsWith("/userprofile-service/socialProfile")) {
     return new Response(JSON.stringify({ displayName: "atleta" }), { status: 200 });
   }
   return new Response("{}", { status: 200 });
 };
 
-presetConsumer("ck", "cs");
-const token = { oauth_token: "tok", oauth_token_secret: "sec" };
-const run = (tool: string, args: Record<string, unknown>) => TOOL_MAP.get(tool)!.handler(token, args);
+// Sesion valida en KV; kvEvents graba cada lectura para comprobar que la validacion va antes.
+const kvEvents: string[] = [];
+const kv = memoryKV({ tokens: tokensJson(jwt(nowSec() + 20 * 3600)) }, { events: kvEvents });
+const kvReads = () => kvEvents.filter((e) => e.startsWith("kv.get")).length;
+const run = (tool: string, args: Record<string, unknown>) => TOOL_MAP.get(tool)!.handler(kv as never, args);
 const A = "https://connectapi.garmin.com";
-// Ultima llamada grabada como "METODO URL [BODY]": no depende de las caches de token ni de displayName.
+// Ultima llamada grabada como "METODO URL [BODY]": no depende de la cache de displayName.
 const lastCall = () => {
   const c = calls[calls.length - 1];
   return c ? `${c.method} ${c.url}${c.body !== undefined ? ` ${c.body}` : ""}` : "(ninguna)";
@@ -55,9 +54,11 @@ const lastCall = () => {
 // --- 1. un activity_id con path traversal se rechaza sin llamar a fetch ---
 {
   calls.length = 0;
+  kvEvents.length = 0;
   check("get_activity rechaza activity_id con traversal",
     await rejects(() => run("get_activity", { activity_id: "../../userprofile-service/socialProfile" }), "activity_id"), "ok");
   check("get_activity con traversal: 0 llamadas a fetch", calls.length, 0);
+  check("get_activity con traversal: 0 lecturas de KV", kvReads(), 0);
 }
 
 // --- 10. cada herramienta con argumentos rechaza los invalidos antes de cualquier fetch ---
@@ -82,9 +83,11 @@ for (const [tool, args, argName] of [
   ["get_activity_exercise_sets", { activity_id: "../../userprofile-service/socialProfile" }, "activity_id"],
 ] as [string, Record<string, unknown>, string][]) {
   calls.length = 0;
+  kvEvents.length = 0;
   const label = `${tool} ${JSON.stringify(args)}`;
   check(`${label} rechaza ${argName}`, await rejects(() => run(tool, args), argName), "ok");
   check(`${label}: 0 llamadas a fetch`, calls.length, 0);
+  check(`${label}: 0 lecturas de KV`, kvReads(), 0);
 }
 
 // --- 9. con argumentos validos, cada herramienta construye exactamente la peticion de hoy ---
@@ -131,13 +134,13 @@ for (const [tool, args, argName] of [
   }
 }
 
-// --- 12. tools/call devuelve el fallo de validacion como isError, no como error JSON-RPC, sin fetch ---
+// --- 12 (T6) should_reject_invalid_arguments_before_reading_kv_or_calling_fetch ---
+// Por tools/call y con KV VACIO: si la sesion se leyera antes de validar, el
+// usuario veria "sin sesion" en vez del error de su argumento.
 {
   calls.length = 0;
-  const env = {
-    GARMIN_OAUTH1: JSON.stringify({ oauth_token: "tok", oauth_token_secret: "sec" }),
-    UPSTREAM_TOKEN: "up", GARMIN_CONSUMER_KEY: "ck", GARMIN_CONSUMER_SECRET: "cs",
-  };
+  const events: string[] = [];
+  const env = { GARMIN_KV: memoryKV({}, { events }), UPSTREAM_TOKEN: "up" };
   const res = await worker.fetch(new Request("https://worker.test/", {
     method: "POST",
     headers: { Authorization: "Bearer up" },
@@ -145,15 +148,17 @@ for (const [tool, args, argName] of [
       jsonrpc: "2.0", id: 1, method: "tools/call",
       params: { name: "delete_workout", arguments: { workout_id: "../../userprofile-service/socialProfile" } },
     }),
-  }), env);
+  }), env as never);
   const body = await res.json() as { result?: { isError?: boolean; content?: { text: string }[] }; error?: unknown };
   const text = body.result?.content?.[0]?.text ?? "";
-  check("tools/call con workout_id invalido: HTTP 200", res.status, 200);
-  check("tools/call con workout_id invalido: result.isError", body.result?.isError, true);
-  check("tools/call con workout_id invalido: texto 'Error: ' que nombra workout_id",
-    text.startsWith("Error: ") && text.includes("workout_id"), true);
-  check("tools/call con workout_id invalido: sin error JSON-RPC", "error" in body, false);
-  check("tools/call con workout_id invalido: 0 llamadas a fetch", calls.length, 0);
+  check("T6 workout_id invalido con KV vacio: HTTP 200", res.status, 200);
+  check("T6 workout_id invalido con KV vacio: sin error JSON-RPC", "error" in body, false);
+  check("T6 workout_id invalido con KV vacio: result.isError", body.result?.isError, true);
+  check("T6 workout_id invalido con KV vacio: 'Error: ' que nombra workout_id e invalido",
+    text.startsWith("Error: ") && text.includes("workout_id") && text.includes("invalido"), true);
+  check("T6 workout_id invalido con KV vacio: no es el error de sin sesion", text.includes("sin sesion"), false);
+  check("T6 workout_id invalido con KV vacio: 0 llamadas a fetch", calls.length, 0);
+  check("T6 workout_id invalido con KV vacio: 0 lecturas de KV", events.filter((e) => e.startsWith("kv.get")).length, 0);
 }
 
 console.log(fail ? `\n${fail} FALLO(S)` : "\nTodo correcto.");
