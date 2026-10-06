@@ -6,5 +6,12 @@
   // Sin contenedor, sin Durable Objects, sin binding de pago.
   // Free tier: 100.000 peticiones al dia.
   "workers_dev": true,
+  // Sesion DI OAuth2 de Garmin en la clave "tokens": la carga garmin-mcp-auth y la
+  // rota el cron. Si despliegas tu copia, crea tu namespace y pon aqui su id.
+  "kv_namespaces": [
+    { "binding": "GARMIN_KV", "id": "441b1688bf7e4726ab4f7481e6aebf3f" }
+  ],
+  // Unico escritor de la sesion: refresca el token de acceso si le quedan < 12 h.
+  "triggers": { "crons": ["0 */6 * * *"] },
   "observability": { "enabled": true }
 }

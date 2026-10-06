@@ -5,10 +5,10 @@ build-backend = "hatchling.build"
 [project]
 name = "garmin-mcp-auth"
 version = "0.1.0"
-description = "Login de Garmin Connect, una vez, para el secreto GARMIN_OAUTH1 del Worker"
+description = "Login de Garmin Connect, una vez: guarda los tokens DI OAuth2 en ~/.garminconnect"
 requires-python = ">=3.10"
-# La misma version de garth cuyo intercambio OAuth1 -> OAuth2 replica src/garmin.ts.
-dependencies = ["garth==0.8.0"]
+# Version fija: el login de Garmin cambia a menudo y cada version sigue al servidor.
+dependencies = ["garminconnect==0.3.17"]
 
 [project.scripts]
 garmin-mcp-auth = "garmin_mcp_auth:main"

@@ -30,43 +30,41 @@ Dates are `YYYY-MM-DD`. Tools return Garmin's JSON unchanged.
 
 ## Requirements
 
-- A Cloudflare account, with a domain on Cloudflare for the default route
+- A Cloudflare account (free plan). A domain on Cloudflare is needed only for the MCP portal (setup step 5).
 - Node.js 22 or later (22.18+ or 23.6+ to run the tests)
 - [uv](https://docs.astral.sh/uv/)
 - A Garmin Connect account
 
 ## Setup
 
-1. **Generate the Garmin token** once, on your machine. It is valid for about a year. `garmin-mcp-auth` (in `auth/`) asks for your email, password and MFA code, logs in with [garth](https://github.com/matin/garth) 0.8.0, and saves `~/.garminconnect/oauth1_token.json`, readable only by you.
+1. **Log in to Garmin** once, on your machine. `garmin-mcp-auth` (in `auth/`) asks for your email, password and MFA code every time, even if a saved session exists, logs in with [python-garminconnect](https://github.com/cyberjunky/python-garminconnect) 0.3.17, and saves Garmin's DI OAuth2 tokens in `~/.garminconnect/garmin_tokens.json`, readable only by you. That file holds an access token that lasts about 25 hours and a refresh token that lasts 30 days and changes on every refresh.
 
    ```bash
    uvx --from "git+https://github.com/isllabres/garmin-mcp-server#subdirectory=auth" garmin-mcp-auth
    ```
 
-   garth is no longer maintained: Garmin changed its login in March 2026, and garth's OAuth1 login has worked only intermittently since. If the login fails with `401` or `429`, wait before retrying, since repeated attempts extend the block.
+   Garmin changed its login in March 2026. If the login fails with `429`, wait before retrying, because repeated attempts extend the block.
 
-2. **Fetch the OAuth consumer credentials** (recommended). Otherwise, the Worker downloads them from a third-party S3 bucket on each cold start.
-
-   ```bash
-   curl -s https://thegarth.s3.amazonaws.com/oauth_consumer.json
-   # {"consumer_key": "...", "consumer_secret": "..."}
-   ```
-
-3. **Store the secrets.**
+2. **Create the KV namespace** that holds the session. This repo's `wrangler.jsonc` already has its namespace id. For your own copy, create one and let wrangler write its id into `wrangler.jsonc`:
 
    ```bash
    npm install
-   npx wrangler secret put GARMIN_OAUTH1 < ~/.garminconnect/oauth1_token.json
-   npx wrangler secret put UPSTREAM_TOKEN          # e.g. openssl rand -hex 32
-   npx wrangler secret put GARMIN_CONSUMER_KEY
-   npx wrangler secret put GARMIN_CONSUMER_SECRET
+   npx wrangler kv namespace create GARMIN_KV --binding GARMIN_KV --update-config
    ```
 
-   | Secret | Required | Purpose |
+3. **Load the session and set the client secret.**
+
+   ```bash
+   npx wrangler kv key put tokens --binding GARMIN_KV --remote --path ~/.garminconnect/garmin_tokens.json
+   npx wrangler secret put UPSTREAM_TOKEN          # e.g. openssl rand -hex 32
+   ```
+
+   | Where | Name | Purpose |
    |---|---|---|
-   | `GARMIN_OAUTH1` | Yes | Contents of `oauth1_token.json` |
-   | `UPSTREAM_TOKEN` | Yes | Bearer token that clients must send |
-   | `GARMIN_CONSUMER_KEY`, `GARMIN_CONSUMER_SECRET` | Recommended | OAuth1 consumer credentials |
+   | KV `GARMIN_KV` | key `tokens` | The Garmin session (`garmin_tokens.json`). Requests read it; only the cron writes it. |
+   | Secret | `UPSTREAM_TOKEN` | Bearer token that clients must send |
+
+   A Cron Trigger, set in `wrangler.jsonc` to run every 6 hours, refreshes the access token when it has less than 12 hours left and stores the new refresh token in KV. Once the session is in KV, don't refresh the same `garmin_tokens.json` anywhere else, for example in another script or a local `wrangler dev` holding this token. Each refresh replaces the refresh token, so the Worker's copy would stop working. Keep `--remote`: without it, Wrangler writes to the local KV and the deployed Worker never sees the session. To log in again, repeat steps 1 and 3.
 
 4. **Deploy.** `wrangler.jsonc` serves the Worker at `https://garmin-mcp-server.<your-subdomain>.workers.dev`. Run:
 
@@ -101,13 +99,10 @@ curl -s -X POST https://garmin-mcp.example.com \
 
 ## Local development
 
-Put local secrets in `.dev.vars` (git-ignored):
+Put the local secret in `.dev.vars` (git-ignored):
 
 ```dotenv
-GARMIN_OAUTH1={"oauth_token":"...","oauth_token_secret":"..."}
 UPSTREAM_TOKEN=localtest
-GARMIN_CONSUMER_KEY=...
-GARMIN_CONSUMER_SECRET=...
 ```
 
 ```bash
@@ -116,7 +111,7 @@ npm run typecheck           # tsc --noEmit over src/
 npm test                    # every test/*.test.mts, each in its own process
 ```
 
-`initialize`, `tools/list` and `ping` work with placeholder secrets; `tools/call` needs a valid Garmin token.
+`npm run dev` uses a local KV, separate from the deployed one. `wrangler kv key …` commands write to that local KV when you pass `--local` or no flag at all; only `--remote` reaches the deployed namespace. The local KV starts empty, so `initialize`, `tools/list` and `ping` work, and `tools/call` answers `sin sesion de Garmin`. To try the cron locally, run `npm run dev -- --test-scheduled` and `curl "http://localhost:8787/__scheduled?cron=0+*/6+*+*+*"`. Never load the production `garmin_tokens.json` into the local KV (with `--local`): a local refresh would replace its refresh token and leave the deployed Worker without a session.
 
 ## Troubleshooting
 
@@ -124,9 +119,12 @@ npm test                    # every test/*.test.mts, each in its own process
 |---|---|
 | `401 Unauthorized` | Send `Authorization: Bearer <UPSTREAM_TOKEN>`; check the secret is set. |
 | `405 Method Not Allowed` | Use `POST`; `GET` and SSE are not supported. |
-| `500` with `GARMIN_OAUTH1 no es un oauth1_token.json valido` | Upload the full `oauth1_token.json` as `GARMIN_OAUTH1`. |
-| `Refresco de token fallido (401)` | The OAuth1 token expired. Repeat setup steps 1 and 3. |
-| `No se pudo leer el oauth_consumer` | Set `GARMIN_CONSUMER_KEY` and `GARMIN_CONSUMER_SECRET` (setup step 2). |
+| `garmin-mcp-auth` exits with `Login sin tokens DI validos` | Garmin completed the login but returned no usable DI tokens, usually because python-garminconnect fell back to a web session. Nothing was saved, and the session in KV is unchanged. Try again later. |
+| Tool result `sin sesion de Garmin: ejecuta garmin-mcp-auth y carga el token en KV` | KV has no valid session. Repeat setup steps 1 and 3. |
+| Tool result `sesion de Garmin caducada: el refresco programado esta fallando…` | The scheduled refresh has been failing. Check the Worker logs for `refresco…` lines. |
+| Log `refresco rechazado: ejecuta garmin-mcp-auth (HTTP 400)` or `401` | Garmin rejected the refresh token, because it expired or was refreshed somewhere else. Repeat setup steps 1 and 3. |
+| Log `refresco fallido (HTTP 403)` on every run | diauth is blocking the Worker's requests. The config is fine; the block is on Garmin's side. |
+| Log `refresco hecho pero no se pudo guardar en KV` | The new refresh token was lost. Repeat setup steps 1 and 3. |
 | `Garmin 4xx/5xx en /path` | Garmin rejected the call. If an endpoint moved, update `src/tools.ts`. |
 
 Logs are in the Cloudflare dashboard (`observability` is enabled in `wrangler.jsonc`).
@@ -135,7 +133,8 @@ Logs are in the Cloudflare dashboard (`observability` is enabled in `wrangler.js
 
 - Anyone with `UPSTREAM_TOKEN` can read the account's health data and create or delete workouts. Keep it secret and restrict portal access to your own identity.
 - Each deployment serves a single Garmin account.
-- Only `garmin.com` accounts are supported (not `garmin.cn`); the `domain` field of `oauth1_token.json` is ignored.
+- Only `garmin.com` accounts are supported (not `garmin.cn`).
+- The Garmin session is stored in Workers KV. Anyone with access to your Cloudflare account can read it.
 - Responses are unfiltered Garmin JSON and can be large.
 - The Workers free plan allows 100,000 requests per day.
 
